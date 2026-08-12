@@ -1,0 +1,3 @@
+{"question": "What was NVDA's most recent quarterly closing price?", "reference": "Should cite a specific dollar figure and date pulled from NVDA's recent quarterly close, not a vague estimate."}
+{"question": "What is AAPL's gross margin?", "reference": "Should cite AAPL's gross margin as a specific percentage sourced from its fundamentals."}
+{"question": "When did NVDA most recently file a 10-Q with the SEC?", "reference": "Should cite a specific filing date and reference the 10-Q form from SEC EDGAR."}
