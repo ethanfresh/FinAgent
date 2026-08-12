@@ -91,4 +91,33 @@ def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+def _counter_by_label(counter: Counter, label: str) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for family in counter.collect():
+        for sample in family.samples:
+            if sample.name.endswith("_total") and label in sample.labels:
+                out[sample.labels[label]] = sample.value
+    return out
+
+
+def _histogram_stats(hist: Histogram) -> dict[str, float]:
+    count = total = 0.0
+    for family in hist.collect():
+        for sample in family.samples:
+            if sample.name.endswith("_count"):
+                count = sample.value
+            elif sample.name.endswith("_sum"):
+                total = sample.value
+    return {"count": count, "avg_latency_seconds": round(total / count, 3) if count else 0.0}
+
+
+@app.get("/api/stats")
+def stats() -> dict:
+    return {
+        "requests_by_status": _counter_by_label(REQUEST_COUNT, "status"),
+        "tool_calls": _counter_by_label(TOOL_CALLS, "tool"),
+        "latency": _histogram_stats(REQUEST_LATENCY),
+    }
+
+
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="static")

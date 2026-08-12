@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FinAgent — Backend</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app arch-app">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9.5" cy="9.5" r="6.25" stroke="currentColor" stroke-width="2"/>
+            <path d="M6 11L8.25 7.25L10.25 9.5L12.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="14.1" y1="14.1" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1>FinAgent</h1>
+          <p>What happens behind an answer</p>
+        </div>
+      </div>
+      <nav class="top-nav">
+        <a class="nav-link" href="/">Chat</a>
+        <a class="nav-link active" href="/architecture.html">Backend</a>
+      </nav>
+    </header>
+
+    <main class="arch-main">
+      <section class="arch-section">
+        <h2>Request pipeline</h2>
+        <p class="arch-sub">A LangGraph state machine — every question flows through these nodes.</p>
+        <div class="pipeline">
+          <div class="pipe-node">
+            <div class="pipe-title">Client</div>
+            <div class="pipe-detail">CLI · Web UI · MCP client</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node accent">
+            <div class="pipe-title">Router</div>
+            <div class="pipe-detail">Claude decides which tool(s) to call</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node accent">
+            <div class="pipe-title">Tool execution</div>
+            <div class="pipe-detail">runs the selected tool(s) below</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node accent">
+            <div class="pipe-title">Synthesizer</div>
+            <div class="pipe-detail">Claude writes the grounded answer</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            <div class="pipe-title">Client</div>
+            <div class="pipe-detail">answer + tools used</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="arch-section">
+        <h2>Tools</h2>
+        <p class="arch-sub">The same functions back the agent and the standalone MCP server.</p>
+        <div class="tool-grid">
+          <div class="tool-card">
+            <div class="tool-card-head"><span class="tool-dot"></span>edgar_filings</div>
+            <p class="tool-target">→ SEC EDGAR (data.sec.gov)</p>
+            <div class="tool-count" data-tool="edgar_filings">0 calls since server start</div>
+          </div>
+          <div class="tool-card">
+            <div class="tool-card-head"><span class="tool-dot"></span>price_history</div>
+            <p class="tool-target">→ Yahoo Finance (yfinance)</p>
+            <div class="tool-count" data-tool="price_history">0 calls since server start</div>
+          </div>
+          <div class="tool-card">
+            <div class="tool-card-head"><span class="tool-dot"></span>fundamental_ratios</div>
+            <p class="tool-target">→ Yahoo Finance (yfinance)</p>
+            <div class="tool-count" data-tool="fundamental_ratios">0 calls since server start</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="arch-section">
+        <h2>Observability</h2>
+        <p class="arch-sub">How we keep track of what the app is doing, so problems get caught instead of going unnoticed.</p>
+        <div class="ops-grid">
+          <div class="ops-card">
+            <div class="ops-name">LangFuse</div>
+            <p>Keeps a step-by-step record of how the AI arrived at each answer — like a flight recorder, so anyone can retrace exactly what it did and why.</p>
+          </div>
+          <div class="ops-card">
+            <div class="ops-name">Prometheus</div>
+            <p>Keeps score of how the app is performing: how many questions it's answered, how fast, and how often something goes wrong. The live numbers below come from here.</p>
+          </div>
+          <div class="ops-card">
+            <div class="ops-name">Sentry</div>
+            <p>Automatically flags it when something breaks, so issues get noticed and fixed quickly instead of failing silently.</p>
+          </div>
+          <div class="ops-card">
+            <div class="ops-name">Weights &amp; Biases</div>
+            <p>Keeps a report card of how accurate the AI's answers are over time, so we can tell whether a change made it better or worse before anyone else sees it.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="arch-section">
+        <h2>Live stats</h2>
+        <p class="arch-sub">Polled from <code>/api/stats</code> every 5s</p>
+        <div class="stats-grid">
+          <div class="stat-tile">
+            <div class="stat-value" id="stat-ok">0</div>
+            <div class="stat-label">requests ok</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="stat-error">0</div>
+            <div class="stat-label">requests errored</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="stat-latency">—</div>
+            <div class="stat-label">avg latency</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="stat-calls">0</div>
+            <div class="stat-label">tool calls</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/architecture.js"></script>
+</body>
+</html>

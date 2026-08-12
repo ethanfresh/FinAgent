@@ -158,6 +158,8 @@ A minimal chat UI lives in `web/` and is served by the same FastAPI process that
 uv run finagent serve   # http://127.0.0.1:8000
 ```
 
+A second page at `/architecture.html` ("Backend" in the nav) visualizes the request pipeline (router → tool execution → synthesizer), the three tools and what they call out to, and live counters — polled from a real `/api/stats` endpoint backed by the same Prometheus metrics as `/metrics`, not mock data.
+
 ## MCP tool server
 
 The agent's tools (`edgar_filings`, `price_history`, `fundamental_ratios`) are exposed as a standalone MCP server, so any MCP client — Claude Desktop, another agent, a notebook — can use them directly:
