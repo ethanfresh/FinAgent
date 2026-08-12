@@ -11,6 +11,8 @@ dependencies = [
     "requests>=2.31",
     "click>=8.1",
     "python-dotenv>=1.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]

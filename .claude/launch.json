@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "finagent-web",
+      "runtimeExecutable": "/Users/ethanfreshman/.local/bin/uv",
+      "runtimeArgs": ["run", "finagent", "serve"],
+      "port": 8000
+    }
+  ]
+}

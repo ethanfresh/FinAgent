@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FinAgent</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 17L9 11L13 15L20 6" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 6H20V12" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1>FinAgent</h1>
+          <p>Financial research, grounded in filings &amp; market data</p>
+        </div>
+      </div>
+    </header>
+
+    <main class="chat" id="chat">
+      <div class="empty-state" id="empty-state">
+        <p class="empty-title">Ask about a public company</p>
+        <div class="suggestions">
+          <button class="suggestion-chip" data-q="What was NVDA's most recent quarterly closing price?">NVDA's most recent quarterly close</button>
+          <button class="suggestion-chip" data-q="What is AAPL's gross margin?">AAPL's gross margin</button>
+          <button class="suggestion-chip" data-q="When did NVDA most recently file a 10-Q with the SEC?">NVDA's latest 10-Q filing</button>
+        </div>
+      </div>
+      <div class="messages" id="messages"></div>
+    </main>
+
+    <form class="composer" id="composer">
+      <input
+        id="question-input"
+        type="text"
+        placeholder="Ask a question about a public company..."
+        autocomplete="off"
+        aria-label="Question"
+      />
+      <button type="submit" id="send-btn" aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 12H19M19 12L13 6M19 12L13 18" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </form>
+    <p class="disclaimer">FinAgent is a research demo. Not investment advice.</p>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

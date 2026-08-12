@@ -3,7 +3,7 @@ import json
 from anthropic import Anthropic
 from langchain_core.messages import AIMessage, HumanMessage
 
-from finagent.agent.graph import build_graph
+from finagent.agent.graph import build_graph, extract_text
 
 JUDGE_PROMPT = """You are grading a financial research agent's answer for a golden eval set.
 
@@ -29,7 +29,7 @@ def run_eval(dataset_path: str) -> list[dict]:
     for case in cases:
         out = graph.invoke({"messages": [HumanMessage(content=case["question"])]})
         answer_msg = next(m for m in reversed(out["messages"]) if isinstance(m, AIMessage) and m.content)
-        answer = answer_msg.content
+        answer = extract_text(answer_msg.content)
 
         verdict = judge.messages.create(
             model="claude-sonnet-5",

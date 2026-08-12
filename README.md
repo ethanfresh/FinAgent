@@ -13,7 +13,7 @@ Think of it as the harness an ML platform team would hand to engineers and say: 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Clients                              │
-│   CLI  ·  Claude Desktop (via MCP)  ·  Batch eval runner    │
+│ CLI · Web UI · Claude Desktop (via MCP) · Batch eval runner │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -61,6 +61,14 @@ uv sync
 cp .env.example .env   # ANTHROPIC_API_KEY or AWS creds for Bedrock, LANGFUSE keys, WANDB_API_KEY
 docker compose up -d langfuse
 uv run finagent ask "How did NVDA's gross margin trend over the last 4 quarters?"
+```
+
+## Web app
+
+A minimal chat UI lives in `web/` and is served by the same FastAPI process that exposes `/api/ask`:
+
+```bash
+uv run finagent serve   # http://127.0.0.1:8000
 ```
 
 ## MCP tool server
@@ -148,7 +156,9 @@ finagent-platform/
 │   ├── mcp_server/     # MCP stdio server exposing tools/
 │   ├── evals/          # judge prompts, scoring, Ray runner
 │   ├── training/        # PyTorch fine-tuning + RLAIF loop
-│   └── observability/  # LangFuse, Prometheus, Sentry instrumentation
+│   ├── observability/  # LangFuse, Prometheus, Sentry instrumentation
+│   └── web.py          # FastAPI app: /api/ask + static web/ UI
+├── web/                # chat UI (HTML/CSS/JS) served by web.py
 ├── evals/golden.jsonl  # golden Q&A dataset
 ├── infra/
 │   ├── terraform/      # EKS, IAM/IRSA, SageMaker resources

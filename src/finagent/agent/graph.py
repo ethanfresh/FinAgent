@@ -12,12 +12,32 @@ TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
 SYSTEM_PROMPT = (
     "You are FinAgent, a financial research assistant. Use the available tools to look up "
     "SEC filings, price history, and fundamental ratios before answering. Cite the figures "
-    "you used. Do not give investment advice."
+    "you used. Do not give investment advice. Answer in plain text with no markdown "
+    "formatting (no asterisks, headers, or bullet characters) since your response is "
+    "rendered in a plain-text chat bubble."
 )
 
 
 class AgentState(TypedDict):
     messages: Annotated[list, operator.add]
+
+
+def extract_text(content) -> str:
+    """Flatten an AIMessage's content into plain text.
+
+    Anthropic responses can return content as a list of blocks (text,
+    thinking, citations, ...) instead of a plain string; only the text
+    blocks matter for display.
+    """
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+    return "".join(parts)
 
 
 def build_graph(model_name: str = "claude-sonnet-5"):
