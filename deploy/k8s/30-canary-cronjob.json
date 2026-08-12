@@ -1,0 +1,42 @@
+{
+   "apiVersion": "batch/v1",
+   "kind": "CronJob",
+   "metadata": {
+      "name": "finagent-canary",
+      "namespace": "finagent"
+   },
+   "spec": {
+      "jobTemplate": {
+         "spec": {
+            "template": {
+               "spec": {
+                  "containers": [
+                     {
+                        "command": [
+                           "uv",
+                           "run",
+                           "finagent",
+                           "canary",
+                           "--threshold",
+                           "0.85"
+                        ],
+                        "envFrom": [
+                           {
+                              "secretRef": {
+                                 "name": "finagent-secrets"
+                              }
+                           }
+                        ],
+                        "image": "finagent:local",
+                        "name": "finagent-canary"
+                     }
+                  ],
+                  "restartPolicy": "OnFailure",
+                  "serviceAccountName": "finagent"
+               }
+            }
+         }
+      },
+      "schedule": "0 6 * * *"
+   }
+}

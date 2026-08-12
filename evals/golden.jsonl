@@ -1,3 +1,8 @@
 {"question": "What was NVDA's most recent quarterly closing price?", "reference": "Should cite a specific dollar figure and date pulled from NVDA's recent quarterly close, not a vague estimate."}
 {"question": "What is AAPL's gross margin?", "reference": "Should cite AAPL's gross margin as a specific percentage sourced from its fundamentals."}
 {"question": "When did NVDA most recently file a 10-Q with the SEC?", "reference": "Should cite a specific filing date and reference the 10-Q form from SEC EDGAR."}
+{"question": "What is MSFT's operating margin?", "reference": "Should cite MSFT's operating margin as a specific percentage sourced from its fundamentals."}
+{"question": "What was AAPL's stock price trend over the last year?", "reference": "Should cite specific quarterly closing prices for AAPL over roughly the last 4 quarters."}
+{"question": "When did AAPL most recently file a 10-K with the SEC?", "reference": "Should cite a specific filing date and reference the 10-K form from SEC EDGAR."}
+{"question": "What is TSLA's return on equity?", "reference": "Should cite TSLA's return on equity (ROE) as a specific percentage sourced from its fundamentals."}
+{"question": "What was MSFT's most recent quarterly closing price?", "reference": "Should cite a specific dollar figure and date pulled from MSFT's recent quarterly close, not a vague estimate."}

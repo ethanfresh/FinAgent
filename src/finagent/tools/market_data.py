@@ -13,11 +13,16 @@ def price_history(ticker: str, period: str = "1y") -> dict:
     hist = yf.Ticker(ticker).history(period=period)
     if hist.empty:
         return {"ticker": ticker, "error": "no price data found"}
-    closes = hist["Close"].resample("QE").last().dropna()
+    closes = hist["Close"]
+    closes.index = closes.index.tz_localize(None)
+    # Group by calendar quarter but key each value by the actual last trading
+    # date observed in that quarter (not pandas' resample bin-edge label,
+    # which would tag an in-progress quarter with its future end date).
+    quarterly = closes.groupby(closes.index.to_period("Q")).apply(lambda s: (s.index[-1].date(), s.iloc[-1]))
     return {
         "ticker": ticker,
         "period": period,
-        "quarterly_close": {str(idx.date()): round(val, 2) for idx, val in closes.items()},
+        "quarterly_close": {str(date): round(price, 2) for date, price in quarterly},
     }
 
 

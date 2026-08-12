@@ -5,3 +5,9 @@ __pycache__/
 .DS_Store
 *.egg-info/
 .pytest_cache/
+.finagent/
+wandb/
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info

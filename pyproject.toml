@@ -13,13 +13,22 @@ dependencies = [
     "python-dotenv>=1.0",
     "fastapi>=0.115",
     "uvicorn>=0.30",
+    "langfuse>=2.50",
+    "langchain>=0.3",
+    "wandb>=0.17",
+    "ray>=2.9,<2.35",
+    "mcp>=1.0,<2.0",
+    "cryptography<45",
+    "prometheus-client>=0.20",
+    "sentry-sdk>=2.10",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
 finagent = "finagent.cli:main"
+finagent-mcp = "finagent.mcp_server.server:run"
 
 [build-system]
 requires = ["hatchling"]

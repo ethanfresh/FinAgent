@@ -1,3 +1,5 @@
+import datetime as dt
+
 import pytest
 import requests
 
@@ -18,6 +20,9 @@ def test_price_history_returns_quarterly_closes():
     assert result["ticker"] == "NVDA"
     assert "error" not in result
     assert len(result["quarterly_close"]) > 0
+    today = dt.datetime.now(tz=dt.UTC).date()
+    for date_str in result["quarterly_close"]:
+        assert dt.date.fromisoformat(date_str) <= today, "quarterly_close must not label data with a future date"
 
 
 def test_fundamental_ratios_returns_known_fields():
