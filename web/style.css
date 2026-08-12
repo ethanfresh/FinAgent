@@ -205,6 +205,31 @@ body {
   border-bottom-left-radius: 4px;
 }
 
+.bubble a {
+  color: var(--purple-700);
+  text-decoration: underline;
+  text-decoration-color: var(--purple-300);
+  text-underline-offset: 2px;
+  font-weight: 500;
+}
+
+.bubble a:hover {
+  color: var(--purple-800);
+  text-decoration-color: var(--purple-700);
+}
+
+@media (prefers-color-scheme: dark) {
+  .bubble a {
+    color: var(--purple-300);
+    text-decoration-color: var(--purple-600);
+  }
+
+  .bubble a:hover {
+    color: var(--purple-200);
+    text-decoration-color: var(--purple-300);
+  }
+}
+
 .msg.agent .bubble.error {
   border-color: #f0b3b3;
   color: #a13939;

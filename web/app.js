@@ -28,13 +28,30 @@ function addTypingIndicator() {
   return msg;
 }
 
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Renders `[title](url)` markdown links as real anchors; everything else is
+// HTML-escaped plain text, so this is safe against injection from the answer text.
+function renderAnswerHtml(text) {
+  const escaped = escapeHtml(text);
+  const linkPattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  return escaped.replace(
+    linkPattern,
+    (match, title, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a>`
+  );
+}
+
 function addAgentMessage(text, toolCalls, isError) {
   const msg = document.createElement("div");
   msg.className = "msg agent";
 
   const bubble = document.createElement("div");
   bubble.className = "bubble" + (isError ? " error" : "");
-  bubble.textContent = text;
+  bubble.innerHTML = renderAnswerHtml(text);
   msg.appendChild(bubble);
 
   if (toolCalls && toolCalls.length) {
