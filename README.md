@@ -17,7 +17,8 @@ Everything below is marked **built** (implemented and independently verified —
 | LangGraph agent (router → tools → synthesizer) | **Built** |
 | Tools: `edgar_filings`, `price_history`, `fundamental_ratios` | **Built** |
 | CLI (`ask`, `eval`, `canary`, `serve`) | **Built** |
-| Web chat UI (FastAPI + `web/`) | **Built** |
+| Web chat UI + Backend visualization page (FastAPI + `web/`) | **Built** |
+| `AgentRunner` protocol + `FINAGENT_RUNNER` swap mechanism | **Built** — proven with a real dummy agent swapped in via env var, not just written |
 | MCP stdio server (`finagent-mcp`) | **Built** — tested with a real MCP client |
 | Eval harness (LLM-as-judge, golden dataset) | **Built** |
 | Ray fan-out for eval/canary parallelism | **Built** |
@@ -101,7 +102,7 @@ Every tool below is wired into real code, not just listed — file references po
 
 | Tool | How it's used | Purpose |
 |---|---|---|
-| FastAPI | [web.py](src/finagent/web.py) defines `POST /api/ask`, `GET /metrics`, and serves the static `web/` UI | HTTP layer between the browser and the agent |
+| FastAPI | [web.py](src/finagent/web.py) defines `POST /api/ask`, `GET /api/stats`, `GET /metrics`, and serves the static `web/` UI | HTTP layer between the browser and the agent |
 | uvicorn | ASGI server running the FastAPI app, launched via `finagent serve` and inside the Docker container | Production-grade server (not a dev-only one) |
 | Pydantic | `AskRequest` / `AskResponse` / `ToolCallOut` models in `web.py` | Request/response validation and typed JSON schemas |
 | Click | [cli.py](src/finagent/cli.py) defines the `finagent` command group (`ask`, `eval`, `canary`, `serve`) | Primary way to drive the agent/eval harness without the web UI |
@@ -126,7 +127,7 @@ Every tool below is wired into real code, not just listed — file references po
 
 | Tool | How it's used | Purpose |
 |---|---|---|
-| pytest | [tests/](tests/) — tool-level tests hitting live SEC EDGAR/Yahoo Finance, plus a graph-construction test | Regression safety net, run in CI |
+| pytest | [tests/](tests/) — tool-level tests hitting live SEC EDGAR/Yahoo Finance, a graph-construction test, the `FINAGENT_RUNNER` swap mechanism, and the FastAPI layer (`/api/ask`, `/api/stats`) via `TestClient` with a fake runner so it doesn't need a live LLM call | Regression safety net, run in CI |
 | ruff | Linter, default rule set | Catches unused imports, unsafe exception handling, stale patterns before they ship; runs in CI |
 
 **Infra & deployment**
@@ -201,7 +202,7 @@ If the pass rate drops below `--threshold`, the command exits nonzero — wire i
 
 ## Observability
 
-- **Tracing** — every LLM call, tool invocation, latency, and token count is traced in LangFuse, tagged by environment (`cli`, `web`, `eval`).
+- **Tracing** — every LLM call, tool invocation, latency, and token count is traced in LangFuse, tagged by environment (`cli`, `web`, `eval`, `canary`) via the `FINAGENT_ENV` variable each entry point sets.
 - **Metrics** — `/metrics` on the web app exports Prometheus counters/histograms: request count by status, request latency, tool-call counts by tool name.
 - **Errors** — Sentry is wired into both the CLI and web app (`sentry_sdk.init`); it's a safe no-op without a `SENTRY_DSN`, and live capture is untested since this project doesn't have a Sentry project configured.
 
@@ -223,30 +224,41 @@ kubectl apply -f deploy/k8s/
 
 ## Onboarding a new agent
 
-The platform is agent-agnostic: implement the `AgentRunner` protocol (`run(question: str) -> AgentResult`), register a golden dataset in `evals/`, and point the eval/canary jobs at your runner via config. You inherit tracing, evals, and drift detection without writing any of it.
+The platform is agent-agnostic by construction, not just by description: `web.py`, `cli.py`, and the eval/canary harness never import FinAgent's own agent directly — they all call [runner.py](src/finagent/runner.py)'s `load_runner()`, which instantiates whatever class `FINAGENT_RUNNER` points at (a `"module.path:ClassName"` dotted string), defaulting to `finagent.agent.runner:FinAgentRunner`.
+
+To onboard a different agent: implement a class with `run(question: str) -> AgentResult` (see [runner.py](src/finagent/runner.py) for the tiny `AgentResult`/`ToolCall` dataclasses), point `FINAGENT_RUNNER` at it, and register a golden dataset in `evals/`. You inherit tracing, the web UI, the eval harness, and drift detection without touching any of their code.
+
+```bash
+FINAGENT_RUNNER="my_package.agent:MyAgentRunner" uv run finagent ask "..."
+```
+
+[tests/test_runner.py](tests/test_runner.py) proves this with a real (if trivial) second agent swapped in via the env var — not just a written claim.
 
 ## Project structure
 
 ```
 finagent-platform/
 ├── src/finagent/
-│   ├── agent/           # LangGraph graph, nodes, prompts
-│   ├── tools/            # EDGAR, market data, ratios (shared with MCP)
-│   ├── mcp_server/       # MCP stdio server exposing tools/
-│   ├── evals/             # judge prompt, scoring, Ray runner
-│   ├── canary.py          # drift detection against a rolling baseline
-│   ├── observability.py   # LangFuse callback wiring
-│   ├── web.py              # FastAPI app: /api/ask, /metrics, static web/ UI
-│   └── cli.py               # ask / eval / canary / serve
-├── web/                     # chat UI (HTML/CSS/JS) served by web.py
-├── evals/golden.jsonl        # golden Q&A dataset
+│   ├── agent/
+│   │   ├── graph.py       # LangGraph graph, nodes, prompts
+│   │   └── runner.py      # FinAgentRunner: the default AgentRunner
+│   ├── tools/              # EDGAR, market data, ratios (shared with MCP)
+│   ├── mcp_server/         # MCP stdio server exposing tools/
+│   ├── evals/              # judge prompt, scoring, Ray runner
+│   ├── runner.py           # AgentRunner protocol + FINAGENT_RUNNER loader
+│   ├── canary.py           # drift detection against a rolling baseline
+│   ├── observability.py    # LangFuse callback wiring
+│   ├── web.py              # FastAPI app: /api/ask, /api/stats, /metrics
+│   └── cli.py              # ask / eval / canary / serve
+├── web/                    # chat UI + Backend visualization page
+├── evals/golden.jsonl      # golden Q&A dataset
 ├── infra/
-│   ├── terraform/             # EKS, IAM/IRSA, SageMaker, S3 (unapplied)
-│   └── jsonnet/                # k8s manifest templates (verified on kind)
-├── deploy/k8s/                  # rendered manifests from jsonnet
+│   ├── terraform/          # EKS, IAM/IRSA, SageMaker, S3 (unapplied)
+│   └── jsonnet/            # k8s manifest templates (verified on kind)
+├── deploy/k8s/              # rendered manifests from jsonnet
 ├── Dockerfile
-├── .github/workflows/ci.yml      # lint (ruff) + test (pytest)
-└── tests/
+├── .github/workflows/ci.yml # lint (ruff) + test (pytest)
+└── tests/                    # tools, graph, runner swap, FastAPI layer
 ```
 
 ## Disclaimer

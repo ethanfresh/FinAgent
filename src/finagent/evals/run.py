@@ -1,13 +1,14 @@
 import json
+import os
 import subprocess
 
 import ray
 import wandb
 from anthropic import Anthropic
-from langchain_core.messages import AIMessage, HumanMessage
 
-from finagent.agent.graph import build_graph, extract_text
-from finagent.observability import langfuse_callbacks
+from finagent.runner import load_runner
+
+os.environ.setdefault("FINAGENT_ENV", "eval")
 
 JUDGE_PROMPT = """You are grading a financial research agent's answer for a golden eval set.
 
@@ -34,16 +35,12 @@ def _git_sha() -> str:
 
 
 @ray.remote
-def _run_case(case: dict, git_sha: str) -> dict:
-    graph = build_graph(MODEL_ID)
+def _run_case(case: dict) -> dict:
+    os.environ.setdefault("FINAGENT_ENV", "eval")
+    runner = load_runner()
     judge = Anthropic()
 
-    out = graph.invoke(
-        {"messages": [HumanMessage(content=case["question"])]},
-        config={"callbacks": langfuse_callbacks(), "metadata": {"environment": "eval", "git_sha": git_sha}},
-    )
-    answer_msg = next(m for m in reversed(out["messages"]) if isinstance(m, AIMessage) and m.content)
-    answer = extract_text(answer_msg.content)
+    answer = runner.run(case["question"]).answer
 
     verdict = judge.messages.create(
         model=MODEL_ID,
@@ -69,7 +66,7 @@ def run_eval(dataset_path: str, parallelism: int = 4) -> list[dict]:
     if not ray.is_initialized():
         ray.init(num_cpus=max(parallelism, 1), ignore_reinit_error=True, log_to_driver=False)
 
-    futures = [_run_case.remote(case, git_sha) for case in cases]
+    futures = [_run_case.remote(case) for case in cases]
     results = ray.get(futures)
 
     for r in results:
@@ -83,8 +80,6 @@ def run_eval(dataset_path: str, parallelism: int = 4) -> list[dict]:
 
 
 def _log_to_wandb(results: list[dict], pass_rate: float, git_sha: str) -> None:
-    import os
-
     if not os.environ.get("WANDB_API_KEY"):
         return
 

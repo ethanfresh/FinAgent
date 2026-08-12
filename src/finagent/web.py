@@ -8,14 +8,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
-from langchain_core.messages import AIMessage, HumanMessage
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel
 
 load_dotenv()
+os.environ.setdefault("FINAGENT_ENV", "web")
 
-from finagent.agent.graph import build_graph, extract_text
-from finagent.observability import langfuse_callbacks
+from finagent.runner import load_runner
 
 sentry_sdk.init(dsn=os.environ.get("SENTRY_DSN"), traces_sample_rate=0.1)
 
@@ -43,8 +42,8 @@ class AskResponse(BaseModel):
 
 
 @lru_cache
-def _graph():
-    return build_graph()
+def _runner():
+    return load_runner()
 
 
 @app.post("/api/ask", response_model=AskResponse)
@@ -55,27 +54,17 @@ def ask(req: AskRequest) -> AskResponse:
         if not question:
             raise HTTPException(status_code=400, detail="question must not be empty")
 
-        result = _graph().invoke(
-            {"messages": [HumanMessage(content=question)]},
-            config={"callbacks": langfuse_callbacks(), "metadata": {"environment": "web"}},
-        )
-        messages = result["messages"]
+        try:
+            result = _runner().run(question)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-        tool_calls = [
-            ToolCallOut(name=call["name"], args=call["args"])
-            for m in messages
-            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
-            for call in m.tool_calls
-        ]
+        tool_calls = [ToolCallOut(name=c.name, args=c.args) for c in result.tool_calls]
         for call in tool_calls:
             TOOL_CALLS.labels(tool=call.name).inc()
 
-        final = next((m for m in reversed(messages) if isinstance(m, AIMessage) and m.content), None)
-        if final is None:
-            raise HTTPException(status_code=502, detail="agent produced no answer")
-
         REQUEST_COUNT.labels(status="ok").inc()
-        return AskResponse(answer=extract_text(final.content), tool_calls=tool_calls)
+        return AskResponse(answer=result.answer, tool_calls=tool_calls)
     except HTTPException:
         REQUEST_COUNT.labels(status="error").inc()
         raise

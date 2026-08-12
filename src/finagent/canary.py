@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -6,6 +7,8 @@ from pathlib import Path
 import ray
 
 from finagent.evals.run import _git_sha, _load_cases, _run_case
+
+os.environ.setdefault("FINAGENT_ENV", "canary")
 
 HISTORY_PATH = Path(".finagent/canary_history.json")
 ROLLING_WINDOW = 5
@@ -29,7 +32,7 @@ def run_canary(dataset_path: str, threshold: float, subset_size: int = 5) -> boo
     if not ray.is_initialized():
         ray.init(num_cpus=max(len(cases), 1), ignore_reinit_error=True, log_to_driver=False)
 
-    results = ray.get([_run_case.remote(c, git_sha) for c in cases])
+    results = ray.get([_run_case.remote(c) for c in cases])
     pass_rate = sum(1 for r in results if r["score"] == "1") / len(results) if results else 0.0
 
     history = _load_history()

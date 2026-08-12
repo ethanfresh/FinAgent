@@ -3,9 +3,9 @@ import os
 import click
 import sentry_sdk
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, HumanMessage
 
 load_dotenv()
+os.environ.setdefault("FINAGENT_ENV", "cli")
 
 sentry_sdk.init(dsn=os.environ.get("SENTRY_DSN"), traces_sample_rate=0.1)
 
@@ -19,16 +19,10 @@ def main():
 @click.argument("question")
 def ask(question: str):
     """Ask the agent a financial research question."""
-    from finagent.agent.graph import build_graph, extract_text
-    from finagent.observability import langfuse_callbacks
+    from finagent.runner import load_runner
 
-    graph = build_graph()
-    result = graph.invoke(
-        {"messages": [HumanMessage(content=question)]},
-        config={"callbacks": langfuse_callbacks(), "metadata": {"environment": "cli"}},
-    )
-    final = next(m for m in reversed(result["messages"]) if isinstance(m, AIMessage) and m.content)
-    click.echo(extract_text(final.content))
+    result = load_runner().run(question)
+    click.echo(result.answer)
 
 
 @main.command()
