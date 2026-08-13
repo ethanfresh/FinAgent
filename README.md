@@ -2,7 +2,7 @@
 
 **A reference platform for building, evaluating, and observing LLM agents in financial workflows.**
 
-FinAgent is a financial research agent — it answers questions about public companies using SEC EDGAR filings and market data — but the agent is intentionally simple. The point of this project is everything *around* the agent: the evaluation harness, observability layer, orchestration, and deployment tooling that turn an agent prototype into something an ML team could actually operate in production.
+FinAgent is a financial research agent — it answers questions about public companies using SEC EDGAR filings and market data — but the agent is intentionally simple. The point of this project is everything *around* the agent: the evaluation harness, fine-tuning loop, observability layer, orchestration, and deployment tooling that turn an agent prototype into something an ML team could actually operate in production.
 
 Think of it as the harness an ML platform team would hand to engineers and say: *"Onboard your agent here, and you get evals, tracing, drift detection, and CI for free."*
 
@@ -10,13 +10,13 @@ Think of it as the harness an ML platform team would hand to engineers and say: 
 
 ## Status
 
-Everything below is marked **built** (implemented and independently verified — hitting live APIs, a real Kubernetes cluster, a real LangFuse/W&B account, or a running Docker container) or **roadmap** (designed, not implemented — usually because it needs infrastructure this dev environment doesn't have, like a GPU or an AWS account).
+Everything below is marked **built** (implemented and independently verified — hitting live APIs, a real Kubernetes cluster, a real Airflow/Prometheus/Grafana stack, a real LangFuse/W&B account, or a running Docker container) or **roadmap** (designed, not implemented — usually because it needs infrastructure this dev environment doesn't have, like a GPU cluster or a billable AWS account).
 
 | Capability | Status |
 |---|---|
 | LangGraph agent (router → tools → synthesizer) | **Built** |
 | Tools: `edgar_filings`, `price_history`, `fundamental_ratios` | **Built** |
-| CLI (`ask`, `eval`, `canary`, `serve`) | **Built** |
+| CLI (`ask`, `eval`, `canary`, `train`, `serve`) | **Built** |
 | Web chat UI + Backend visualization page (FastAPI + `web/`) | **Built** |
 | `AgentRunner` protocol + `FINAGENT_RUNNER` swap mechanism | **Built** — proven with a real dummy agent swapped in via env var, not just written |
 | MCP stdio server (`finagent-mcp`) | **Built** — tested with a real MCP client |
@@ -28,12 +28,13 @@ Everything below is marked **built** (implemented and independently verified —
 | Sentry error capture | **Built**, but unverified against a live project (no `SENTRY_DSN` configured) |
 | Drift detection / canary command | **Built** — rolling baseline persisted locally |
 | Dockerfile | **Built** — image builds and runs correctly |
-| Terraform (EKS, IAM/IRSA, SageMaker role, S3) | **Written, `terraform validate`-clean** — never applied (no AWS account) |
+| Terraform (EKS, IAM/IRSA, SageMaker role, S3) | **Written, `terraform validate`-clean** — never applied (no AWS account; provisioning real billable infra needs an explicit go-ahead this project doesn't have) |
 | Jsonnet → Kubernetes manifests | **Built** — rendered manifests were actually deployed to a local `kind` cluster and answered real questions through the live pod |
-| Airflow DAG for canary scheduling | **Roadmap** — canary scheduling today is a Kubernetes `CronJob` (see `infra/jsonnet/`), not Airflow |
-| Grafana dashboard | **Roadmap** — the Prometheus endpoint exists, no dashboard is built on top of it yet |
-| Fine-tuning / RLHF (PyTorch, SageMaker) | **Roadmap** — not implemented; needs GPU/cloud training infra this environment doesn't have |
-| Bedrock as a model backend | **Roadmap** — the agent only calls the Anthropic API directly today |
+| Airflow DAG for canary scheduling | **Built** — a real `apache-airflow` install ran the DAG via `airflow dags test`, executing the actual `finagent canary` command and correctly propagating both a pass and a threshold failure as task success/failure |
+| Grafana dashboard on Prometheus | **Built** — Prometheus (scraping the live app) + a provisioned Grafana dashboard run via Docker Compose; confirmed real request/tool-call counts rendered in the dashboard, matching actual API calls made during testing |
+| PyTorch fine-tuning (local SFT) | **Built** — `finagent train` runs a real CPU training loop (tokenize → forward → cross-entropy loss → backward → optimizer step) on judge-graded transcripts, saving a real checkpoint |
+| Fine-tuning on SageMaker / full RLHF (PPO) | **Roadmap** — the local PyTorch loop is real; submitting it as a SageMaker training job and a full PPO/RLHF loop (vs. this project's SFT) both need infra/scope this environment doesn't have |
+| Bedrock model backend | **Built, live call unverified** — `BedrockAgentRunner` is real and swappable via `FINAGENT_RUNNER`; running it gets all the way to a `botocore` call to Bedrock and fails only on `NoCredentialsError` (no AWS account) — same standard as the Sentry integration |
 
 ## Architecture
 
@@ -58,13 +59,15 @@ Everything below is marked **built** (implemented and independently verified —
 ┌─────────────────────────────────────────────────────────────┐
 │                         Eval Layer                          │
 │          LLM-as-judge harness (Ray fan-out) → W&B           │
-│      Canary CronJob → rolling-baseline drift detection      │
+│       PyTorch SFT on graded transcripts → checkpoint        │
+│   Airflow DAG → Canary → rolling-baseline drift detection   │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
 │                         Infra & Ops                         │
 │ Terraform (EKS, unapplied) · Jsonnet → k8s · GH Actions CI  │
-│               Prometheus · Sentry · LangFuse                │
+│          Prometheus + Grafana · Sentry · LangFuse           │
+│   Model backends: Anthropic API · Bedrock (code-verified)   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,10 +76,11 @@ Everything below is marked **built** (implemented and independently verified —
 | Development | Infrastructure | Ops |
 |---|---|---|
 | Python | Ray (eval fan-out) | Git, GitHub Actions (CI) |
-| LangGraph (agent graph) | Docker | LangFuse (tracing) |
-| MCP (tool interface) | Kubernetes (kind locally; verified) | Sentry (error tracking) |
-| FastAPI (web + API) | Jsonnet (manifest templating) | Prometheus (metrics) |
-| | Terraform (EKS, written/validated, unapplied) | Weights & Biases (experiment tracking) |
+| Bash (Airflow's BashOperator) | Docker | AWS (Bedrock — code-verified; SageMaker role) |
+| LangGraph (agent graph) | Kubernetes (kind locally; verified) | LangFuse (tracing) |
+| PyTorch (`finagent train`) | Airflow (canary DAG; verified) | Sentry (error tracking) |
+| MCP (tool interface) | Jsonnet (manifest templating) | Prometheus + Grafana (metrics; verified) |
+| FastAPI (web + API) | Terraform (EKS, written/validated, unapplied) | Weights & Biases (experiment tracking) |
 
 ## Tools in detail
 
@@ -90,6 +94,7 @@ Every tool below is wired into real code, not just listed — file references po
 | LangGraph | `StateGraph` in `agent/graph.py` wires `router → tools → synthesizer` nodes with conditional edges based on whether the model requested a tool call | Explicit, inspectable agent control flow instead of an opaque agent loop |
 | LangChain (`langchain`, `langchain-core`) | Supplies the `@tool` decorator (schema generation from type hints/docstrings) used in `tools/`, the message types (`HumanMessage`/`AIMessage`/`ToolMessage`), and the LangFuse callback integration | Shared plumbing between the agent, its tools, and tracing |
 | MCP (`mcp` SDK) | `FastMCP` in [mcp_server/server.py](src/finagent/mcp_server/server.py) wraps the same three tool functions as an MCP stdio server | Exposes the tools to any MCP client (Claude Desktop, another agent) without duplicating tool logic |
+| langchain-aws (`ChatBedrock`) | [agent/bedrock_runner.py](src/finagent/agent/bedrock_runner.py)'s `BedrockAgentRunner` passes a `ChatBedrock` instance into the same `build_graph()` used by the default runner | A second model backend selectable via `FINAGENT_RUNNER`, matching an AWS-native (Bedrock) deployment |
 
 **Data sources**
 
@@ -114,6 +119,14 @@ Every tool below is wired into real code, not just listed — file references po
 |---|---|---|
 | Ray | [evals/run.py](src/finagent/evals/run.py) and [canary.py](src/finagent/canary.py) wrap the per-case agent+judge call in `@ray.remote` and fan it out with `ray.get()` | Parallel eval/canary execution instead of running cases sequentially |
 | Weights & Biases | `_log_to_wandb()` in `evals/run.py` logs pass rate and a per-case table to a `finagent-evals` W&B project | Experiment tracking so eval runs are comparable across prompt/model changes |
+| Apache Airflow | [infra/airflow/dags/canary_dag.py](infra/airflow/dags/canary_dag.py) — a `BashOperator` runs `finagent canary` inside the app's own `uv` environment; ran end-to-end via `airflow dags test`, propagating both a pass and a real threshold failure | Scheduled orchestration for the nightly drift-detection job |
+
+**Fine-tuning**
+
+| Tool | How it's used | Purpose |
+|---|---|---|
+| PyTorch | [training/train.py](src/finagent/training/train.py) — a manual training loop (tokenize → forward → cross-entropy loss → `backward()` → `optimizer.step()`) fine-tuning `prajjwal1/bert-tiny` to predict judge pass/fail from (question, answer) pairs | Real, CPU-runnable SFT on judge-graded transcripts — a local stand-in for the SageMaker/GPU path |
+| Transformers (`AutoModelForSequenceClassification`) | Same file — base model + classification head, checkpoint saved to `artifacts/judge-checkpoint/` | Pretrained tokenizer/model loading and checkpoint I/O |
 
 **Observability**
 
@@ -121,6 +134,7 @@ Every tool below is wired into real code, not just listed — file references po
 |---|---|---|
 | LangFuse | [observability.py](src/finagent/observability.py)'s `langfuse_callbacks()` returns a `CallbackHandler` passed into every `graph.invoke(..., config={"callbacks": [...]})` call (CLI, web, eval, canary) | Full tracing of every LLM call and tool invocation, tagged by environment |
 | prometheus-client | `web.py` defines `Counter`/`Histogram` metrics (`finagent_requests_total`, `finagent_request_latency_seconds`, `finagent_tool_calls_total`) exposed at `/metrics` | Operational metrics a real Prometheus server would scrape |
+| Prometheus + Grafana | [infra/observability/](infra/observability/) — `docker-compose.yml` runs Prometheus (scraping the live app's `/metrics`) and a provisioned Grafana with a 6-panel dashboard; confirmed real counts render, matching actual API calls | The metrics side of "detecting performance, decay and drift issues" |
 | Sentry SDK | `sentry_sdk.init()` in both `cli.py` and `web.py` | Exception capture/grouping in production; safe no-op without a DSN |
 
 **Testing & quality**
@@ -159,7 +173,7 @@ A minimal chat UI lives in `web/` and is served by the same FastAPI process that
 uv run finagent serve   # http://127.0.0.1:8000
 ```
 
-A second page at `/architecture.html` ("Backend" in the nav) visualizes the request pipeline (router → tool execution → synthesizer), the three tools and what they call out to, and live counters — polled from a real `/api/stats` endpoint backed by the same Prometheus metrics as `/metrics`, not mock data.
+A second page at `/architecture.html` ("Backend" in the nav) is the full tour: the complete stack broken out by Development/Infrastructure/Ops with what each tool actually does in this codebase, the request pipeline (router → tool execution → synthesizer), the three tools and what they call out to, and live counters polled from a real `/api/stats` endpoint backed by the same Prometheus metrics as `/metrics` — not mock data.
 
 ## MCP tool server
 
@@ -190,6 +204,29 @@ uv run finagent eval --dataset evals/golden.jsonl --parallelism 4
 
 Runs are logged to W&B with the git SHA and model ID as metadata, so any two runs are directly comparable.
 
+## Fine-tuning
+
+`finagent train` fine-tunes a small local model (`prajjwal1/bert-tiny`, 4.4M params) to predict whether the eval judge would grade a (question, answer) pair a pass or fail — distilling the judge's signal into something fast and local. It's a genuine PyTorch training loop, not a wrapper around a one-liner:
+
+```bash
+uv sync --extra training   # torch + transformers
+uv run finagent train --epochs 3
+```
+
+```
+[1] What is AAPL's gross margin?
+[0] What was AAPL's stock price trend over the last year?
+...
+epoch 1/3 — loss 0.6894
+epoch 2/3 — loss 0.6745
+epoch 3/3 — loss 0.6734
+Trained on 8 examples, checkpoint at artifacts/judge-checkpoint
+```
+
+The training data is collected live: the agent answers every golden-set question, the same judge the eval harness uses grades each answer, and those graded transcripts become the fine-tuning set — SFT on judge-graded transcripts, made concrete instead of just described. A real `model.safetensors` checkpoint is saved to `artifacts/judge-checkpoint/`.
+
+This runs on CPU as a stand-in for the SageMaker/GPU path — submitting the same job to SageMaker, and a full PPO/RLHF loop rather than SFT, are both roadmap (this dev environment has no AWS account or GPU).
+
 ## Drift detection
 
 `finagent canary` re-runs a fixed case subset, scores it, and compares the pass rate against a rolling baseline persisted in `.finagent/canary_history.json`:
@@ -198,15 +235,43 @@ Runs are logged to W&B with the git SHA and model ID as metadata, so any two run
 uv run finagent canary --threshold 0.85
 ```
 
-If the pass rate drops below `--threshold`, the command exits nonzero — wire it into a scheduler (a Kubernetes `CronJob` manifest is included in `infra/jsonnet/`; Airflow is the natural swap-in for teams already standardized on it, but that integration isn't built here) and it becomes an alert. This catches silent regressions from upstream model updates, data source changes, or prompt edits that skipped the full eval.
+If the pass rate drops below `--threshold`, the command exits nonzero. Scheduling is real, not just described — [infra/airflow/dags/canary_dag.py](infra/airflow/dags/canary_dag.py) is a genuine Airflow DAG whose `BashOperator` runs this exact command:
+
+```bash
+cd infra/airflow && export AIRFLOW_HOME="$(pwd)"
+airflow db migrate
+airflow dags test finagent_canary 2026-08-12
+```
+
+Run for real during development: the DAG loaded cleanly, executed the real `finagent canary` command (Ray fan-out, live LLM calls, a real pass rate), and correctly marked the task **SUCCESS** at a lenient threshold and **FAILED** at the production one (`0.85`) — proving both the pass and fail paths propagate correctly through Airflow, not just the happy path. A Kubernetes `CronJob` (`infra/jsonnet/`) is the equivalent for teams that schedule via k8s instead of Airflow.
 
 ## Observability
 
 - **Tracing** — every LLM call, tool invocation, latency, and token count is traced in LangFuse, tagged by environment (`cli`, `web`, `eval`, `canary`) via the `FINAGENT_ENV` variable each entry point sets.
 - **Metrics** — `/metrics` on the web app exports Prometheus counters/histograms: request count by status, request latency, tool-call counts by tool name.
+- **Dashboards** — [infra/observability/](infra/observability/) runs Prometheus + a provisioned Grafana dashboard via Docker Compose:
+  ```bash
+  cd infra/observability && docker compose up -d
+  # Prometheus: http://localhost:9090  ·  Grafana: http://localhost:3000 (admin/finagent)
+  ```
+  Verified live: Prometheus's target for the app showed `up`, and Grafana's dashboard rendered real request/tool-call counts that matched actual API calls made during testing — not placeholder panels.
 - **Errors** — Sentry is wired into both the CLI and web app (`sentry_sdk.init`); it's a safe no-op without a `SENTRY_DSN`, and live capture is untested since this project doesn't have a Sentry project configured.
 
 This makes "why did this answer get worse last Tuesday" a query instead of an archaeology project.
+
+## Model backends
+
+The agent's LLM is swappable through the same `FINAGENT_RUNNER` mechanism used for onboarding a different agent entirely — because a different model backend *is* just a different `AgentRunner`:
+
+```bash
+# Default: Anthropic API
+uv run finagent ask "..."
+
+# Bedrock (requires: uv sync --extra bedrock, plus AWS credentials)
+FINAGENT_RUNNER="finagent.agent.bedrock_runner:BedrockAgentRunner" uv run finagent ask "..."
+```
+
+[agent/bedrock_runner.py](src/finagent/agent/bedrock_runner.py) passes a `ChatBedrock` instance into the exact same `build_graph()` the default runner uses — same router/tools/synthesizer graph, different chat model. This is real, wired code: running it without AWS credentials gets all the way to `botocore`'s API call and fails with a clean `NoCredentialsError`, not an import error or a crash — the same bar applied to the Sentry integration elsewhere in this README.
 
 ## Infrastructure as code
 
@@ -240,25 +305,30 @@ FINAGENT_RUNNER="my_package.agent:MyAgentRunner" uv run finagent ask "..."
 finagent-platform/
 ├── src/finagent/
 │   ├── agent/
-│   │   ├── graph.py       # LangGraph graph, nodes, prompts
-│   │   └── runner.py      # FinAgentRunner: the default AgentRunner
-│   ├── tools/              # EDGAR, market data, ratios (shared with MCP)
-│   ├── mcp_server/         # MCP stdio server exposing tools/
-│   ├── evals/              # judge prompt, scoring, Ray runner
-│   ├── runner.py           # AgentRunner protocol + FINAGENT_RUNNER loader
-│   ├── canary.py           # drift detection against a rolling baseline
-│   ├── observability.py    # LangFuse callback wiring
-│   ├── web.py              # FastAPI app: /api/ask, /api/stats, /metrics
-│   └── cli.py              # ask / eval / canary / serve
-├── web/                    # chat UI + Backend visualization page
-├── evals/golden.jsonl      # golden Q&A dataset
+│   │   ├── graph.py         # LangGraph graph, nodes, prompts, run_graph() helper
+│   │   ├── runner.py        # FinAgentRunner: the default AgentRunner (Anthropic)
+│   │   └── bedrock_runner.py # BedrockAgentRunner: same graph, ChatBedrock
+│   ├── tools/                # EDGAR, market data, ratios (shared with MCP)
+│   ├── mcp_server/            # MCP stdio server exposing tools/
+│   ├── evals/                  # judge prompt, scoring, Ray runner
+│   ├── training/                # PyTorch SFT loop on judge-graded transcripts
+│   ├── runner.py                 # AgentRunner protocol + FINAGENT_RUNNER loader
+│   ├── canary.py                  # drift detection against a rolling baseline
+│   ├── observability.py            # LangFuse callback wiring
+│   ├── web.py                       # FastAPI app: /api/ask, /api/stats, /metrics
+│   └── cli.py                        # ask / eval / canary / train / serve
+├── web/                                # chat UI + Backend visualization page
+├── evals/golden.jsonl                   # golden Q&A dataset
 ├── infra/
-│   ├── terraform/          # EKS, IAM/IRSA, SageMaker, S3 (unapplied)
-│   └── jsonnet/            # k8s manifest templates (verified on kind)
-├── deploy/k8s/              # rendered manifests from jsonnet
+│   ├── terraform/                         # EKS, IAM/IRSA, SageMaker, S3 (unapplied)
+│   ├── jsonnet/                            # k8s manifest templates (verified on kind)
+│   ├── airflow/dags/canary_dag.py           # canary DAG (verified with airflow dags test)
+│   └── observability/                        # Prometheus + Grafana via Docker Compose (verified)
+├── deploy/k8s/                                 # rendered manifests from jsonnet
+├── artifacts/judge-checkpoint/                  # fine-tuned model output (gitignored)
 ├── Dockerfile
-├── .github/workflows/ci.yml # lint (ruff) + test (pytest)
-└── tests/                    # tools, graph, runner swap, FastAPI layer
+├── .github/workflows/ci.yml                       # lint (ruff) + test (pytest)
+└── tests/                                           # tools, graph, runner swap, FastAPI, Bedrock
 ```
 
 ## Disclaimer

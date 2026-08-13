@@ -30,6 +30,57 @@
 
     <main class="arch-main">
       <section class="arch-section">
+        <h2>Stack</h2>
+        <p class="arch-sub">Every entry here is wired into running code on this page, not a bullet list — hover the "how" line for the actual mechanism.</p>
+
+        <div class="stack-highlight">
+          <div class="stack-highlight-title">Agentic systems &amp; workflow patterns</div>
+          <div class="stack-badges">
+            <span class="stack-badge"><img class="badge-logo" src="/logos/langgraph.png" alt="" />Agentic AI system (LangGraph router → tools → synthesizer)</span>
+            <span class="stack-badge"><img class="badge-logo" src="/logos/modelcontextprotocol.png" alt="" />MCP server patterns (same tools, dual-served)</span>
+            <span class="stack-badge"><img class="badge-logo" src="/logos/ray.png" alt="" />Ray-parallelized workflows (eval + canary fan-out)</span>
+            <span class="stack-badge"><img class="badge-logo" src="/logos/anthropic.png" alt="" />Multi-backend runner (Anthropic + Bedrock, swappable)</span>
+          </div>
+        </div>
+
+        <div class="stack-columns">
+          <div class="stack-column">
+            <div class="stack-column-title">Development</div>
+            <ul class="stack-list">
+              <li><img class="stack-logo" src="/logos/python.png" alt="" /><span class="stack-name">Python</span><span class="stack-how">the entire app — agent, tools, API, training, IaC glue</span></li>
+              <li><img class="stack-logo" src="/logos/gnubash.png" alt="" /><span class="stack-name">Bash</span><span class="stack-how">Airflow's BashOperator invokes <code>finagent canary</code> across environments</span></li>
+              <li><img class="stack-logo" src="/logos/langgraph.png" alt="" /><span class="stack-name">LangGraph</span><span class="stack-how">the router/tools/synthesizer agent graph</span></li>
+              <li><img class="stack-logo" src="/logos/pytorch.png" alt="" /><span class="stack-name">PyTorch</span><span class="stack-how"><code>finagent train</code> — real SFT loop on judge-graded transcripts</span></li>
+            </ul>
+          </div>
+
+          <div class="stack-column">
+            <div class="stack-column-title">Infrastructure</div>
+            <ul class="stack-list">
+              <li><img class="stack-logo" src="/logos/ray.png" alt="" /><span class="stack-name">Ray</span><span class="stack-how">parallel eval/canary case execution</span></li>
+              <li><img class="stack-logo" src="/logos/kubernetes.png" alt="" /><span class="stack-name">Kubernetes / EKS</span><span class="stack-how">Jsonnet-rendered manifests, deployed &amp; verified on a local <code>kind</code> cluster</span></li>
+              <li><img class="stack-logo" src="/logos/apacheairflow.png" alt="" /><span class="stack-name">Airflow</span><span class="stack-how">DAG schedules the nightly canary job</span></li>
+              <li><img class="stack-logo" src="/logos/jsonnet.png" alt="" /><span class="stack-name">Jsonnet</span><span class="stack-how">templates the k8s manifests for local/prod</span></li>
+              <li><img class="stack-logo" src="/logos/terraform.png" alt="" /><span class="stack-name">Terraform</span><span class="stack-how">EKS/IAM/SageMaker/S3, <code>validate</code>-clean, unapplied (no AWS account)</span></li>
+              <li><img class="stack-logo" src="/logos/docker.png" alt="" /><span class="stack-name">Docker</span><span class="stack-how">app image, built and run locally</span></li>
+            </ul>
+          </div>
+
+          <div class="stack-column">
+            <div class="stack-column-title">Ops</div>
+            <ul class="stack-list">
+              <li><img class="stack-logo" src="/logos/git.png" alt="" /><span class="stack-name">Git / GitHub Actions</span><span class="stack-how">CI: lint + full test suite on every push</span></li>
+              <li><img class="stack-logo" src="/logos/amazonaws.png" alt="" /><span class="stack-name">AWS (Bedrock, SageMaker)</span><span class="stack-how">Bedrock model backend + SageMaker training role, real code, no live account</span></li>
+              <li><img class="stack-logo" src="/logos/langfuse.png" alt="" /><span class="stack-name">LangFuse</span><span class="stack-how">traces every LLM call, tagged by environment</span></li>
+              <li><img class="stack-logo" src="/logos/sentry.png" alt="" /><span class="stack-name">Sentry</span><span class="stack-how">exception capture, wired into CLI + web</span></li>
+              <li><img class="stack-logo" src="/logos/prometheus.png" alt="" /><span class="stack-name">Prometheus</span><span class="stack-how"><code>/metrics</code> — the live stats below come from here</span></li>
+              <li><img class="stack-logo" src="/logos/weightsandbiases.png" alt="" /><span class="stack-name">Weights &amp; Biases</span><span class="stack-how">every eval run logged with pass rate + git SHA</span></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="arch-section">
         <h2>Request pipeline</h2>
         <p class="arch-sub">A LangGraph state machine: every question flows through these nodes.</p>
         <div class="pipeline">

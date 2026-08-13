@@ -11,3 +11,11 @@ wandb/
 *.tfstate
 *.tfstate.*
 .terraform.tfstate.lock.info
+.airflow-venv/
+infra/airflow/airflow.db
+infra/airflow/airflow.cfg
+infra/airflow/webserver_config.py
+infra/airflow/logs/
+infra/airflow/*.pid
+infra/airflow/standalone_admin_password.txt
+artifacts/

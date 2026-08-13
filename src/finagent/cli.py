@@ -47,6 +47,17 @@ def canary(dataset: str, threshold: float, subset_size: int):
 
 
 @main.command()
+@click.option("--dataset", default="evals/golden.jsonl", show_default=True)
+@click.option("--epochs", default=3, show_default=True)
+def train(dataset: str, epochs: int):
+    """Fine-tune a small local judge classifier on graded transcripts (requires: uv sync --extra training)."""
+    from finagent.training.train import train_judge
+
+    result = train_judge(dataset, epochs=epochs)
+    click.echo(f"Trained on {result['n_examples']} examples, checkpoint at {result['checkpoint_dir']}")
+
+
+@main.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8000, show_default=True)
 def serve(host: str, port: int):

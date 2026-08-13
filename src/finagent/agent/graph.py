@@ -1,10 +1,13 @@
 import operator
+import os
 from typing import Annotated, TypedDict
 
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, StateGraph
 
+from finagent.observability import langfuse_callbacks
+from finagent.runner import AgentResult, ToolCall
 from finagent.tools import ALL_TOOLS
 
 TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
@@ -43,8 +46,14 @@ def extract_text(content) -> str:
     return "".join(parts)
 
 
-def build_graph(model_name: str = "claude-sonnet-5"):
-    llm = ChatAnthropic(model=model_name).bind_tools(ALL_TOOLS)
+def build_graph(model_name: str = "claude-sonnet-5", llm=None):
+    """Build the router/tools/synthesizer graph around a chat model.
+
+    Defaults to Claude via the Anthropic API. Pass a different LangChain
+    chat model (e.g. ChatBedrock) to run the same graph against a different
+    backend — see agent/bedrock_runner.py.
+    """
+    llm = (llm or ChatAnthropic(model=model_name)).bind_tools(ALL_TOOLS)
 
     def router(state: AgentState) -> dict:
         messages = state["messages"]
@@ -75,3 +84,30 @@ def build_graph(model_name: str = "claude-sonnet-5"):
     graph.add_conditional_edges("synthesizer", should_continue, {"tools": "tools", "end": END})
     graph.add_edge("tools", "synthesizer")
     return graph.compile()
+
+
+def run_graph(graph, question: str, backend: str = "anthropic") -> AgentResult:
+    """Invoke a compiled graph and package the result as an AgentResult.
+
+    Shared by every AgentRunner implementation (FinAgentRunner, BedrockAgentRunner, ...)
+    so LangFuse tagging and tool-call extraction stay in one place.
+    """
+    environment = os.environ.get("FINAGENT_ENV", "runner")
+    result = graph.invoke(
+        {"messages": [HumanMessage(content=question)]},
+        config={"callbacks": langfuse_callbacks(), "metadata": {"environment": environment, "backend": backend}},
+    )
+    messages = result["messages"]
+
+    tool_calls = [
+        ToolCall(name=call["name"], args=call["args"])
+        for m in messages
+        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
+        for call in m.tool_calls
+    ]
+
+    final = next((m for m in reversed(messages) if isinstance(m, AIMessage) and m.content), None)
+    if final is None:
+        raise RuntimeError("agent produced no answer")
+
+    return AgentResult(answer=extract_text(final.content), tool_calls=tool_calls)

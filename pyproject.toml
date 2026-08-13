@@ -25,6 +25,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+training = ["torch>=2.0,<2.3", "transformers>=4.30,<4.50"]
+bedrock = ["langchain-aws>=0.2"]
 
 [project.scripts]
 finagent = "finagent.cli:main"
