@@ -1,0 +1,16 @@
+route:
+  receiver: webhook
+  group_by: ["alertname"]
+  group_wait: 5s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url: "http://host.docker.internal:9099/webhook"
+        send_resolved: true
+
+# Swap the receiver above for slack_configs / pagerduty_configs / email_configs
+# in a real deployment — this webhook is wired to infra/observability/webhook_receiver.py
+# purely so the alert pipeline can be verified end-to-end locally.

@@ -34,6 +34,24 @@ def _git_sha() -> str:
         return "unknown"
 
 
+def judge_score(judge: Anthropic, question: str, reference: str, answer: str) -> str:
+    """Score one (question, answer) pair with the eval judge. Shared by the eval
+    harness, the canary job, and the prompt optimizer so grading logic — and the
+    judge prompt itself — stays in exactly one place."""
+    verdict = judge.messages.create(
+        model=MODEL_ID,
+        max_tokens=300,
+        messages=[
+            {
+                "role": "user",
+                "content": JUDGE_PROMPT.format(question=question, reference=reference, answer=answer),
+            }
+        ],
+    )
+    text_block = next((b for b in verdict.content if b.type == "text"), None)
+    return text_block.text.strip() if text_block else "0"
+
+
 @ray.remote
 def _run_case(case: dict) -> dict:
     os.environ.setdefault("FINAGENT_ENV", "eval")
@@ -41,21 +59,7 @@ def _run_case(case: dict) -> dict:
     judge = Anthropic()
 
     answer = runner.run(case["question"]).answer
-
-    verdict = judge.messages.create(
-        model=MODEL_ID,
-        max_tokens=300,
-        messages=[
-            {
-                "role": "user",
-                "content": JUDGE_PROMPT.format(
-                    question=case["question"], reference=case["reference"], answer=answer
-                ),
-            }
-        ],
-    )
-    text_block = next((b for b in verdict.content if b.type == "text"), None)
-    score = text_block.text.strip() if text_block else "0"
+    score = judge_score(judge, case["question"], case["reference"], answer)
     return {"question": case["question"], "answer": answer, "score": score}
 
 

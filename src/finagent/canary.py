@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import ray
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
 from finagent.evals.run import _git_sha, _load_cases, _run_case
 
@@ -12,6 +13,23 @@ os.environ.setdefault("FINAGENT_ENV", "canary")
 
 HISTORY_PATH = Path(".finagent/canary_history.json")
 ROLLING_WINDOW = 5
+PUSHGATEWAY_ADDR = os.environ.get("PUSHGATEWAY_ADDR", "localhost:9091")
+
+
+def _push_metrics(pass_rate: float, ok: bool) -> None:
+    """Push the canary result to Prometheus Pushgateway so Prometheus can alert
+    on it — canary is a batch job, not a scrapeable long-running process, so it
+    reports its result rather than being scraped (the standard Prometheus
+    pattern for batch/cron jobs)."""
+    registry = CollectorRegistry()
+    Gauge("finagent_canary_pass_rate", "Most recent canary run pass rate", registry=registry).set(pass_rate)
+    Gauge("finagent_canary_ok", "1 if the most recent canary run passed threshold, else 0", registry=registry).set(
+        1 if ok else 0
+    )
+    try:
+        push_to_gateway(PUSHGATEWAY_ADDR, job="finagent_canary", registry=registry)
+    except OSError as exc:
+        print(f"(pushgateway unreachable at {PUSHGATEWAY_ADDR}, skipping metric push: {exc})")
 
 
 def _load_history() -> list[dict]:
@@ -61,6 +79,7 @@ def run_canary(dataset_path: str, threshold: float, subset_size: int = 5) -> boo
     else:
         print("OK")
 
+    _push_metrics(pass_rate, ok)
     return ok
 
 

@@ -38,8 +38,10 @@
           <div class="stack-badges">
             <span class="stack-badge"><img class="badge-logo" src="/logos/langgraph.png" alt="" />Agentic AI system (LangGraph router → tools → synthesizer)</span>
             <span class="stack-badge"><img class="badge-logo" src="/logos/modelcontextprotocol.png" alt="" />MCP server patterns (same tools, dual-served)</span>
-            <span class="stack-badge"><img class="badge-logo" src="/logos/ray.png" alt="" />Ray-parallelized workflows (eval + canary fan-out)</span>
+            <span class="stack-badge"><img class="badge-logo" src="/logos/ray.png" alt="" />Ray-parallelized workflows (eval + canary + optimizer fan-out)</span>
             <span class="stack-badge"><img class="badge-logo" src="/logos/anthropic.png" alt="" />Multi-backend runner (Anthropic + Bedrock, swappable)</span>
+            <span class="stack-badge"><img class="badge-logo" src="/logos/langgraph.png" alt="" />Mixture-of-experts agent (dispatcher gates 3 scoped experts)</span>
+            <span class="stack-badge"><img class="badge-logo" src="/logos/anthropic.png" alt="" />Prompt optimization (propose → score → adopt; 50% → 88% on a real run)</span>
           </div>
         </div>
 
@@ -73,8 +75,9 @@
               <li><img class="stack-logo" src="/logos/amazonaws.png" alt="" /><span class="stack-name">AWS (Bedrock, SageMaker)</span><span class="stack-how">Bedrock model backend + SageMaker training role, real code, no live account</span></li>
               <li><img class="stack-logo" src="/logos/langfuse.png" alt="" /><span class="stack-name">LangFuse</span><span class="stack-how">traces every LLM call, tagged by environment</span></li>
               <li><img class="stack-logo" src="/logos/sentry.png" alt="" /><span class="stack-name">Sentry</span><span class="stack-how">exception capture, wired into CLI + web</span></li>
-              <li><img class="stack-logo" src="/logos/prometheus.png" alt="" /><span class="stack-name">Prometheus</span><span class="stack-how"><code>/metrics</code> — the live stats below come from here</span></li>
-              <li><img class="stack-logo" src="/logos/weightsandbiases.png" alt="" /><span class="stack-name">Weights &amp; Biases</span><span class="stack-how">every eval run logged with pass rate + git SHA</span></li>
+              <li><img class="stack-logo" src="/logos/prometheus.png" alt="" /><span class="stack-name">Prometheus</span><span class="stack-how"><code>/metrics</code> — the live stats below come from here; 4 alert rules fire through Alertmanager + Pushgateway</span></li>
+              <li><img class="stack-logo" src="/logos/grafana.png" alt="" /><span class="stack-name">Grafana</span><span class="stack-how">8-panel dashboard on Prometheus, verified with real data</span></li>
+              <li><img class="stack-logo" src="/logos/weightsandbiases.png" alt="" /><span class="stack-name">Weights &amp; Biases</span><span class="stack-how">every eval + optimizer run logged with pass rate + git SHA</span></li>
             </ul>
           </div>
         </div>

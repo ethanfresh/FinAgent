@@ -1,0 +1,43 @@
+groups:
+  - name: finagent
+    rules:
+      - alert: FinAgentDown
+        expr: up{job="finagent"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FinAgent web app is unreachable"
+          description: "Prometheus has not been able to scrape {{ $labels.instance }} for at least 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          (sum(rate(finagent_requests_total{status="error"}[5m])) or vector(0))
+          /
+          (sum(rate(finagent_requests_total[5m])) > 0)
+          > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FinAgent error rate above 10%"
+          description: "More than 10% of /api/ask requests have failed over the last 5 minutes."
+
+      - alert: HighLatency
+        expr: |
+          (rate(finagent_request_latency_seconds_sum[5m]) / rate(finagent_request_latency_seconds_count[5m])) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "FinAgent average latency above 5s"
+          description: "Average /api/ask latency has exceeded 5 seconds over the last 5 minutes — check upstream Anthropic/tool latency."
+
+      - alert: CanaryFailing
+        expr: finagent_canary_pass_rate < 0.85
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FinAgent canary pass rate below threshold"
+          description: "The most recent canary run scored {{ $value | humanizePercentage }}, below the 0.85 threshold — likely a model, data source, or prompt regression."

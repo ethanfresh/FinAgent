@@ -19,3 +19,4 @@ infra/airflow/logs/
 infra/airflow/*.pid
 infra/airflow/standalone_admin_password.txt
 artifacts/
+infra/observability/webhook_received.jsonl

@@ -15,8 +15,11 @@ Everything below is marked **built** (implemented and independently verified —
 | Capability | Status |
 |---|---|
 | LangGraph agent (router → tools → synthesizer) | **Built** |
-| Tools: `edgar_filings`, `price_history`, `fundamental_ratios` | **Built** |
-| CLI (`ask`, `eval`, `canary`, `train`, `serve`) | **Built** |
+| Tools: `edgar_filings`, `price_history`, `fundamental_ratios`, `company_news`, `executive_profile` | **Built** |
+| Mixture-of-experts agent (dispatcher → parallel experts → synthesizer) | **Built** — a second, structurally different agent (see [Mixture-of-experts agent](#mixture-of-experts-agent)); gating verified to actually discriminate, not just run everything |
+| Automated prompt optimization (`finagent optimize`) | **Built** — a real run improved the eval pass rate from 50% → 75%, independently re-confirmed at 88% on a fresh eval (see [Prompt optimization](#prompt-optimization)) |
+| Prometheus alerting (Alertmanager + Pushgateway) | **Built** — a real canary failure fired a `CanaryFailing` alert end-to-end through Prometheus → Alertmanager → a webhook receiver (see [Alerting](#alerting)) |
+| CLI (`ask`, `eval`, `canary`, `train`, `optimize`, `serve`) | **Built** |
 | Web chat UI + Backend visualization page (FastAPI + `web/`) | **Built** |
 | `AgentRunner` protocol + `FINAGENT_RUNNER` swap mechanism | **Built** — proven with a real dummy agent swapped in via env var, not just written |
 | MCP stdio server (`finagent-mcp`) | **Built** — tested with a real MCP client |
@@ -45,20 +48,23 @@ Everything below is marked **built** (implemented and independently verified —
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
-│                  LangGraph Agent                            │
-│   router → tool execution → synthesizer                     │
-│   (traced end-to-end with LangFuse)                         │
+│                           Agents                             │
+│    FinAgentRunner: router → tool execution → synthesizer    │
+│ MoEAgentRunner: dispatcher → parallel experts → synthesizer │
+│ (swappable via FINAGENT_RUNNER, both traced with LangFuse)  │
 └──────────────────────────┬──────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────┐
-│                  MCP Tool Server                            │
-│   edgar_filings · price_history · fundamental_ratios        │
-│   (same tools serve the agent and external MCP clients)     │
+│                       MCP Tool Server                       │
+│     edgar_filings · price_history · fundamental_ratios      │
+│              company_news · executive_profile               │
+│   (same tools serve the agents and external MCP clients)    │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
 │                         Eval Layer                          │
 │          LLM-as-judge harness (Ray fan-out) → W&B           │
+│       Prompt optimizer: propose → score → adopt best        │
 │       PyTorch SFT on graded transcripts → checkpoint        │
 │   Airflow DAG → Canary → rolling-baseline drift detection   │
 └─────────────────────────────────────────────────────────────┘
@@ -66,7 +72,7 @@ Everything below is marked **built** (implemented and independently verified —
 ┌─────────────────────────────────────────────────────────────┐
 │                         Infra & Ops                         │
 │ Terraform (EKS, unapplied) · Jsonnet → k8s · GH Actions CI  │
-│          Prometheus + Grafana · Sentry · LangFuse           │
+│   Prometheus + Grafana + Alertmanager · Sentry · LangFuse   │
 │   Model backends: Anthropic API · Bedrock (code-verified)   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -75,12 +81,13 @@ Everything below is marked **built** (implemented and independently verified —
 
 | Development | Infrastructure | Ops |
 |---|---|---|
-| Python | Ray (eval fan-out) | Git, GitHub Actions (CI) |
+| Python | Ray (eval/canary fan-out) | Git, GitHub Actions (CI) |
 | Bash (Airflow's BashOperator) | Docker | AWS (Bedrock — code-verified; SageMaker role) |
-| LangGraph (agent graph) | Kubernetes (kind locally; verified) | LangFuse (tracing) |
+| LangGraph (2 agents: flat + MoE) | Kubernetes (kind locally; verified) | LangFuse (tracing) |
 | PyTorch (`finagent train`) | Airflow (canary DAG; verified) | Sentry (error tracking) |
 | MCP (tool interface) | Jsonnet (manifest templating) | Prometheus + Grafana (metrics; verified) |
-| FastAPI (web + API) | Terraform (EKS, written/validated, unapplied) | Weights & Biases (experiment tracking) |
+| FastAPI (web + API) | Terraform (EKS, written/validated, unapplied) | Alertmanager + Pushgateway (alerting; verified) |
+| | | Weights & Biases (experiment + optimizer tracking) |
 
 ## Tools in detail
 
@@ -90,17 +97,17 @@ Every tool below is wired into real code, not just listed — file references po
 
 | Tool | How it's used | Purpose |
 |---|---|---|
-| Anthropic API (`anthropic`, `langchain-anthropic`) | `ChatAnthropic` in [agent/graph.py](src/finagent/agent/graph.py) is bound to the 3 tools and invoked in the router/synthesizer loop | The model that decides which tool to call and writes the final answer |
-| LangGraph | `StateGraph` in `agent/graph.py` wires `router → tools → synthesizer` nodes with conditional edges based on whether the model requested a tool call | Explicit, inspectable agent control flow instead of an opaque agent loop |
-| LangChain (`langchain`, `langchain-core`) | Supplies the `@tool` decorator (schema generation from type hints/docstrings) used in `tools/`, the message types (`HumanMessage`/`AIMessage`/`ToolMessage`), and the LangFuse callback integration | Shared plumbing between the agent, its tools, and tracing |
-| MCP (`mcp` SDK) | `FastMCP` in [mcp_server/server.py](src/finagent/mcp_server/server.py) wraps the same three tool functions as an MCP stdio server | Exposes the tools to any MCP client (Claude Desktop, another agent) without duplicating tool logic |
+| Anthropic API (`anthropic`, `langchain-anthropic`) | `ChatAnthropic` in [agent/graph.py](src/finagent/agent/graph.py) is bound to tools and invoked in the router/synthesizer loop | The model that decides which tool to call and writes the final answer |
+| LangGraph | `StateGraph` in `agent/graph.py` wires `router → tools → synthesizer`; a second, structurally different graph in [agent/moe_graph.py](src/finagent/agent/moe_graph.py) wires `dispatch → {experts} → synthesize` with dynamic `Send`-based fan-out | Explicit, inspectable agent control flow — proven with two real architectures, not just one |
+| LangChain (`langchain`, `langchain-core`) | Supplies the `@tool` decorator (schema generation from type hints/docstrings) used in `tools/`, the message types (`HumanMessage`/`AIMessage`/`ToolMessage`), and the LangFuse callback integration | Shared plumbing between the agents, their tools, and tracing |
+| MCP (`mcp` SDK) | `FastMCP` in [mcp_server/server.py](src/finagent/mcp_server/server.py) wraps all five tool functions as an MCP stdio server | Exposes the tools to any MCP client (Claude Desktop, another agent) without duplicating tool logic |
 | langchain-aws (`ChatBedrock`) | [agent/bedrock_runner.py](src/finagent/agent/bedrock_runner.py)'s `BedrockAgentRunner` passes a `ChatBedrock` instance into the same `build_graph()` used by the default runner | A second model backend selectable via `FINAGENT_RUNNER`, matching an AWS-native (Bedrock) deployment |
 
 **Data sources**
 
 | Tool | How it's used | Purpose |
 |---|---|---|
-| yfinance | `tools/market_data.py` — `price_history` and `fundamental_ratios` pull from Yahoo Finance | The market-data half of "grounded in filings and live market data" |
+| yfinance | `tools/market_data.py` (`price_history`, `fundamental_ratios`), `tools/news.py` (`company_news`), `tools/executives.py` (`executive_profile`) — all pull from Yahoo Finance | Market data, recent news, and leadership/compensation data — the "up-to-date financial information, company news, executive reputation" story |
 | SEC EDGAR (via `requests`, no SDK) | `tools/edgar.py` calls SEC's public `company_tickers.json` and `submissions/CIK....json` endpoints directly with a required identifying `User-Agent` | The filings half of the grounding story — real 10-K/10-Q/8-K data |
 
 **Web app & CLI**
@@ -110,15 +117,15 @@ Every tool below is wired into real code, not just listed — file references po
 | FastAPI | [web.py](src/finagent/web.py) defines `POST /api/ask`, `GET /api/stats`, `GET /metrics`, and serves the static `web/` UI | HTTP layer between the browser and the agent |
 | uvicorn | ASGI server running the FastAPI app, launched via `finagent serve` and inside the Docker container | Production-grade server (not a dev-only one) |
 | Pydantic | `AskRequest` / `AskResponse` / `ToolCallOut` models in `web.py` | Request/response validation and typed JSON schemas |
-| Click | [cli.py](src/finagent/cli.py) defines the `finagent` command group (`ask`, `eval`, `canary`, `serve`) | Primary way to drive the agent/eval harness without the web UI |
+| Click | [cli.py](src/finagent/cli.py) defines the `finagent` command group (`ask`, `eval`, `canary`, `train`, `optimize`, `serve`) | Primary way to drive the agent/eval harness without the web UI |
 | python-dotenv | `load_dotenv()` at the top of `cli.py`, `web.py`, `mcp_server/server.py` | Loads `.env` so local dev doesn't need vars exported manually |
 
 **Evaluation & parallelism**
 
 | Tool | How it's used | Purpose |
 |---|---|---|
-| Ray | [evals/run.py](src/finagent/evals/run.py) and [canary.py](src/finagent/canary.py) wrap the per-case agent+judge call in `@ray.remote` and fan it out with `ray.get()` | Parallel eval/canary execution instead of running cases sequentially |
-| Weights & Biases | `_log_to_wandb()` in `evals/run.py` logs pass rate and a per-case table to a `finagent-evals` W&B project | Experiment tracking so eval runs are comparable across prompt/model changes |
+| Ray | [evals/run.py](src/finagent/evals/run.py), [canary.py](src/finagent/canary.py), and [optimize.py](src/finagent/optimize.py) all wrap their per-case scoring calls in `@ray.remote` and fan out with `ray.get()` | Parallel eval/canary/optimizer scoring instead of running cases sequentially |
+| Weights & Biases | `_log_to_wandb()` in `evals/run.py` and `optimize.py` logs pass rate / round-by-round scores to `finagent-evals` and `finagent-optimize` W&B projects | Experiment tracking so eval and optimization runs are comparable across prompt/model changes |
 | Apache Airflow | [infra/airflow/dags/canary_dag.py](infra/airflow/dags/canary_dag.py) — a `BashOperator` runs `finagent canary` inside the app's own `uv` environment; ran end-to-end via `airflow dags test`, propagating both a pass and a real threshold failure | Scheduled orchestration for the nightly drift-detection job |
 
 **Fine-tuning**
@@ -134,14 +141,15 @@ Every tool below is wired into real code, not just listed — file references po
 |---|---|---|
 | LangFuse | [observability.py](src/finagent/observability.py)'s `langfuse_callbacks()` returns a `CallbackHandler` passed into every `graph.invoke(..., config={"callbacks": [...]})` call (CLI, web, eval, canary) | Full tracing of every LLM call and tool invocation, tagged by environment |
 | prometheus-client | `web.py` defines `Counter`/`Histogram` metrics (`finagent_requests_total`, `finagent_request_latency_seconds`, `finagent_tool_calls_total`) exposed at `/metrics` | Operational metrics a real Prometheus server would scrape |
-| Prometheus + Grafana | [infra/observability/](infra/observability/) — `docker-compose.yml` runs Prometheus (scraping the live app's `/metrics`) and a provisioned Grafana with a 6-panel dashboard; confirmed real counts render, matching actual API calls | The metrics side of "detecting performance, decay and drift issues" |
+| Prometheus + Grafana | [infra/observability/](infra/observability/) — `docker-compose.yml` runs Prometheus (scraping the live app's `/metrics`) and a provisioned Grafana with an 8-panel dashboard; confirmed real counts render, matching actual API calls | The metrics side of "detecting performance, decay and drift issues" |
+| Alertmanager + Pushgateway | [alert_rules.yml](infra/observability/alert_rules.yml) defines 4 alert rules; [canary.py](src/finagent/canary.py) pushes its result to Pushgateway since it's a batch job, not scrapeable. Verified end-to-end: a real canary failure fired `CanaryFailing`, Alertmanager picked it up, and a webhook receiver logged the delivered payload | Gets paged about drift/errors instead of having to notice a dashboard |
 | Sentry SDK | `sentry_sdk.init()` in both `cli.py` and `web.py` | Exception capture/grouping in production; safe no-op without a DSN |
 
 **Testing & quality**
 
 | Tool | How it's used | Purpose |
 |---|---|---|
-| pytest | [tests/](tests/) — tool-level tests hitting live SEC EDGAR/Yahoo Finance, a graph-construction test, the `FINAGENT_RUNNER` swap mechanism, and the FastAPI layer (`/api/ask`, `/api/stats`) via `TestClient` with a fake runner so it doesn't need a live LLM call | Regression safety net, run in CI |
+| pytest | [tests/](tests/) — tool-level tests hitting live SEC EDGAR/Yahoo Finance, graph-construction tests for both agents, the MoE dispatcher's gating logic, the `FINAGENT_RUNNER` swap mechanism, and the FastAPI layer (`/api/ask`, `/api/stats`) via `TestClient` with a fake runner so it doesn't need a live LLM call | Regression safety net, run in CI |
 | ruff | Linter, default rule set | Catches unused imports, unsafe exception handling, stale patterns before they ship; runs in CI |
 
 **Infra & deployment**
@@ -204,6 +212,29 @@ uv run finagent eval --dataset evals/golden.jsonl --parallelism 4
 
 Runs are logged to W&B with the git SHA and model ID as metadata, so any two runs are directly comparable.
 
+## Prompt optimization
+
+`finagent optimize` closes the loop the eval harness opens: it asks Claude to read the *current* system prompt plus the specific cases it just failed, propose full rewrites aimed at those failures, scores every candidate against the same golden set (parallelized the same way as `eval`), and adopts whichever one scores best — a small, real hill-climbing implementation of the "prompt optimization" pattern, not a stub:
+
+```bash
+uv run finagent optimize --rounds 2 --candidates 3
+```
+
+Run for real during development, starting from the original hand-written prompt:
+
+```
+baseline: 50% (8 cases)
+round 1: proposed 2 candidates (4 failures to fix)
+  candidate 1: 50%
+  candidate 2: 75%
+  -> 75% beats current 50%, adopting
+Wrote new champion prompt to prompts/system_prompt.txt (50% -> 75%)
+```
+
+The candidate that won specifically fixed a real bug this project had already hit once before (the "most recent quarterly closing price" mid-quarter-vs-quarter-end ambiguity) — the optimizer rediscovered and fixed it on its own from eval failures, without being told what the bug was. A completely separate, freshly-run `finagent eval` afterward independently confirmed **88%** — up from the 50% baseline.
+
+The live prompt is file-backed (`prompts/system_prompt.txt`, loaded by [agent/graph.py](src/finagent/agent/graph.py)'s `load_system_prompt()`), not hardcoded — so a winning candidate takes effect on the next run without a code change, and every round is logged to a `finagent-optimize` W&B project.
+
 ## Fine-tuning
 
 `finagent train` fine-tunes a small local model (`prajjwal1/bert-tiny`, 4.4M params) to predict whether the eval judge would grade a (question, answer) pair a pass or fail — distilling the judge's signal into something fast and local. It's a genuine PyTorch training loop, not a wrapper around a one-liner:
@@ -245,6 +276,8 @@ airflow dags test finagent_canary 2026-08-12
 
 Run for real during development: the DAG loaded cleanly, executed the real `finagent canary` command (Ray fan-out, live LLM calls, a real pass rate), and correctly marked the task **SUCCESS** at a lenient threshold and **FAILED** at the production one (`0.85`) — proving both the pass and fail paths propagate correctly through Airflow, not just the happy path. A Kubernetes `CronJob` (`infra/jsonnet/`) is the equivalent for teams that schedule via k8s instead of Airflow.
 
+Canary is a batch job, not a scrapeable process, so it *pushes* its result (`finagent_canary_pass_rate`, `finagent_canary_ok`) to a Prometheus Pushgateway rather than waiting to be scraped — the standard Prometheus pattern for cron/batch jobs. That metric is what the `CanaryFailing` alert (see [Alerting](#alerting)) watches.
+
 ## Observability
 
 - **Tracing** — every LLM call, tool invocation, latency, and token count is traced in LangFuse, tagged by environment (`cli`, `web`, `eval`, `canary`) via the `FINAGENT_ENV` variable each entry point sets.
@@ -252,12 +285,27 @@ Run for real during development: the DAG loaded cleanly, executed the real `fina
 - **Dashboards** — [infra/observability/](infra/observability/) runs Prometheus + a provisioned Grafana dashboard via Docker Compose:
   ```bash
   cd infra/observability && docker compose up -d
-  # Prometheus: http://localhost:9090  ·  Grafana: http://localhost:3000 (admin/finagent)
+  # Prometheus: http://localhost:9090  ·  Grafana: http://localhost:3000 (admin/finagent)  ·  Alertmanager: http://localhost:9093
   ```
-  Verified live: Prometheus's target for the app showed `up`, and Grafana's dashboard rendered real request/tool-call counts that matched actual API calls made during testing — not placeholder panels.
+  Verified live: Prometheus's target for the app showed `up`, and Grafana's dashboard rendered real request/tool-call/canary/alert counts that matched actual API calls and canary runs made during testing — not placeholder panels.
 - **Errors** — Sentry is wired into both the CLI and web app (`sentry_sdk.init`); it's a safe no-op without a `SENTRY_DSN`, and live capture is untested since this project doesn't have a Sentry project configured.
 
 This makes "why did this answer get worse last Tuesday" a query instead of an archaeology project.
+
+## Alerting
+
+Metrics and dashboards tell you *that* something's wrong if you happen to be looking; alerting tells you *without* looking. [infra/observability/alert_rules.yml](infra/observability/alert_rules.yml) defines four real Prometheus alert rules:
+
+| Alert | Fires when |
+|---|---|
+| `FinAgentDown` | the app hasn't been scrapeable for 1m |
+| `HighErrorRate` | >10% of `/api/ask` requests error over 5m |
+| `HighLatency` | average request latency exceeds 5s over 5m |
+| `CanaryFailing` | the pushed canary pass rate drops below 0.85 |
+
+Prometheus evaluates these and forwards firing alerts to Alertmanager ([alertmanager.yml](infra/observability/alertmanager.yml)), which routes them to a receiver — in production that's `slack_configs`/`pagerduty_configs`/etc.; here it's a tiny local webhook ([webhook_receiver.py](infra/observability/webhook_receiver.py)) that stands in for one so the full pipeline can be proven end-to-end without a real integration configured.
+
+It was proven end-to-end, not just config-validated: a real canary run scored 67%, `CanaryFailing` transitioned to `firing` in Prometheus, Alertmanager picked it up (`GET /api/v2/alerts` showed it active), and the webhook receiver logged the delivered payload with the correct annotation (*"The most recent canary run scored 66.67%, below the 0.85 threshold"*). `promtool check rules` also passes clean.
 
 ## Model backends
 
@@ -299,36 +347,60 @@ FINAGENT_RUNNER="my_package.agent:MyAgentRunner" uv run finagent ask "..."
 
 [tests/test_runner.py](tests/test_runner.py) proves this with a real (if trivial) second agent swapped in via the env var — not just a written claim.
 
+### Mixture-of-experts agent
+
+A second, *non-trivial* agent proving the same point — not just the swap-in dummy above, but a genuinely different LangGraph architecture, selectable the same way:
+
+```bash
+FINAGENT_RUNNER="finagent.agent.moe_runner:MoEAgentRunner" uv run finagent ask "Tell me about NVIDIA — how's it doing financially, any recent news, and who runs it?"
+```
+
+Instead of one agent with every tool, [agent/moe_graph.py](src/finagent/agent/moe_graph.py) gates three scoped experts:
+
+- **financials** — `price_history`, `fundamental_ratios`, `edgar_filings`
+- **news** — `company_news` (Yahoo Finance headlines via `yfinance`)
+- **executives** — `executive_profile` (real leadership names, titles, compensation) + `company_news`, instructed to ground any reputation comment in actual recent coverage rather than invent a sentiment score
+
+A **dispatcher** node reads the question and decides which experts are relevant — verified to actually discriminate, not just always run everything: `"What is AAPL's gross margin?"` → `["financials"]` only; `"Who is the CEO of Tesla?"` → `["executives"]` only. Only the selected experts run, in parallel (LangGraph's `Send` API for dynamic fan-out), each with its own scoped toolset and its own focused report. A **synthesizer** then weaves whichever reports ran into one narrative — "the story" of the company — rather than three disconnected paragraphs.
+
+Run for real: a broad question correctly triggered all three experts, each pulled real data (NVDA's actual margins and price range, its actual 10-K filing link, real recent news about its Wall Street financing deal, Jensen Huang's real name/age/compensation), and the synthesizer produced one coherent multi-paragraph story citing all of it — not three tool dumps stapled together.
+
 ## Project structure
 
 ```
 finagent-platform/
 ├── src/finagent/
 │   ├── agent/
-│   │   ├── graph.py         # LangGraph graph, nodes, prompts, run_graph() helper
-│   │   ├── runner.py        # FinAgentRunner: the default AgentRunner (Anthropic)
-│   │   └── bedrock_runner.py # BedrockAgentRunner: same graph, ChatBedrock
-│   ├── tools/                # EDGAR, market data, ratios (shared with MCP)
-│   ├── mcp_server/            # MCP stdio server exposing tools/
-│   ├── evals/                  # judge prompt, scoring, Ray runner
-│   ├── training/                # PyTorch SFT loop on judge-graded transcripts
-│   ├── runner.py                 # AgentRunner protocol + FINAGENT_RUNNER loader
-│   ├── canary.py                  # drift detection against a rolling baseline
-│   ├── observability.py            # LangFuse callback wiring
-│   ├── web.py                       # FastAPI app: /api/ask, /api/stats, /metrics
-│   └── cli.py                        # ask / eval / canary / train / serve
-├── web/                                # chat UI + Backend visualization page
-├── evals/golden.jsonl                   # golden Q&A dataset
+│   │   ├── graph.py           # flat agent graph, run_graph() helper, prompt loader
+│   │   ├── moe_graph.py       # MoE graph: dispatch -> parallel experts -> synthesize
+│   │   ├── runner.py          # FinAgentRunner (flat agent, Anthropic)
+│   │   ├── moe_runner.py      # MoEAgentRunner
+│   │   └── bedrock_runner.py  # BedrockAgentRunner: either graph, ChatBedrock
+│   ├── tools/                  # EDGAR, market data, news, executives (shared with MCP)
+│   ├── mcp_server/              # MCP stdio server exposing tools/
+│   ├── evals/                    # judge prompt, scoring, Ray runner
+│   ├── training/                  # PyTorch SFT loop on judge-graded transcripts
+│   ├── runner.py                   # AgentRunner protocol + FINAGENT_RUNNER loader
+│   ├── optimize.py                  # prompt optimizer: propose -> score -> adopt
+│   ├── canary.py                     # drift detection + Pushgateway metric push
+│   ├── observability.py               # LangFuse callback wiring
+│   ├── web.py                          # FastAPI app: /api/ask, /api/stats, /metrics
+│   └── cli.py                           # ask / eval / canary / train / optimize / serve
+├── prompts/system_prompt.txt              # live system prompt (optimizer writes here)
+├── web/                                     # chat UI + Backend visualization page
+├── evals/golden.jsonl                        # golden Q&A dataset
 ├── infra/
-│   ├── terraform/                         # EKS, IAM/IRSA, SageMaker, S3 (unapplied)
-│   ├── jsonnet/                            # k8s manifest templates (verified on kind)
-│   ├── airflow/dags/canary_dag.py           # canary DAG (verified with airflow dags test)
-│   └── observability/                        # Prometheus + Grafana via Docker Compose (verified)
-├── deploy/k8s/                                 # rendered manifests from jsonnet
-├── artifacts/judge-checkpoint/                  # fine-tuned model output (gitignored)
+│   ├── terraform/                              # EKS, IAM/IRSA, SageMaker, S3 (unapplied)
+│   ├── jsonnet/                                  # k8s manifest templates (verified on kind)
+│   ├── airflow/dags/canary_dag.py                 # canary DAG (verified with airflow dags test)
+│   └── observability/                              # Prometheus + Grafana + Alertmanager (verified)
+│       ├── alert_rules.yml, alertmanager.yml, webhook_receiver.py
+│       └── grafana/
+├── deploy/k8s/                                       # rendered manifests from jsonnet
+├── artifacts/judge-checkpoint/                          # fine-tuned model output (gitignored)
 ├── Dockerfile
-├── .github/workflows/ci.yml                       # lint (ruff) + test (pytest)
-└── tests/                                           # tools, graph, runner swap, FastAPI, Bedrock
+├── .github/workflows/ci.yml                               # lint (ruff) + test (pytest)
+└── tests/                                                   # tools, both agents, runner swap, FastAPI, Bedrock
 ```
 
 ## Disclaimer

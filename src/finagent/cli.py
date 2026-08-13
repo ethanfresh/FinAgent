@@ -58,6 +58,21 @@ def train(dataset: str, epochs: int):
 
 
 @main.command()
+@click.option("--dataset", default="evals/golden.jsonl", show_default=True)
+@click.option("--rounds", default=2, show_default=True)
+@click.option("--candidates", default=3, show_default=True)
+def optimize(dataset: str, rounds: int, candidates: int):
+    """Optimize the agent's system prompt against the eval harness (LLM proposes, eval scores)."""
+    from finagent.optimize import optimize as run_optimize
+
+    result = run_optimize(dataset, rounds=rounds, candidates_per_round=candidates)
+    click.echo(
+        f"baseline {result['baseline_score']:.0%} -> final {result['final_score']:.0%} "
+        f"(improved: {result['improved']}, {result['rounds_run']} rounds)"
+    )
+
+
+@main.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8000, show_default=True)
 def serve(host: str, port: int):

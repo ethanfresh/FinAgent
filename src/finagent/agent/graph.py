@@ -1,5 +1,6 @@
 import operator
 import os
+from pathlib import Path
 from typing import Annotated, TypedDict
 
 from langchain_anthropic import ChatAnthropic
@@ -12,7 +13,11 @@ from finagent.tools import ALL_TOOLS
 
 TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
 
-SYSTEM_PROMPT = (
+PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "system_prompt.txt"
+
+# Fallback used only if prompts/system_prompt.txt is missing — the file is the
+# source of truth so `finagent optimize` can adopt a new champion prompt.
+_DEFAULT_SYSTEM_PROMPT = (
     "You are FinAgent, a financial research assistant. Use the available tools to look up "
     "SEC filings, price history, and fundamental ratios before answering. Cite the figures "
     "you used. Do not give investment advice. Answer in plain text with no markdown "
@@ -22,6 +27,17 @@ SYSTEM_PROMPT = (
     "a short, human-readable label describing the source (e.g. 'NVDA 10-Q — filed "
     "2026-05-20'), never the raw URL or link text like 'here' or 'this filing'."
 )
+
+
+def load_system_prompt() -> str:
+    """The live system prompt — read from prompts/system_prompt.txt so
+    `finagent optimize` can replace it with a better-scoring version without a
+    code change. Falls back to the hardcoded default if the file is missing."""
+    if PROMPT_PATH.exists():
+        text = PROMPT_PATH.read_text().strip()
+        if text:
+            return text
+    return _DEFAULT_SYSTEM_PROMPT
 
 
 class AgentState(TypedDict):
@@ -46,19 +62,22 @@ def extract_text(content) -> str:
     return "".join(parts)
 
 
-def build_graph(model_name: str = "claude-sonnet-5", llm=None):
+def build_graph(model_name: str = "claude-sonnet-5", llm=None, system_prompt: str | None = None):
     """Build the router/tools/synthesizer graph around a chat model.
 
     Defaults to Claude via the Anthropic API. Pass a different LangChain
     chat model (e.g. ChatBedrock) to run the same graph against a different
-    backend — see agent/bedrock_runner.py.
+    backend — see agent/bedrock_runner.py. Pass system_prompt to score a
+    candidate prompt (used by `finagent optimize`) without touching the live
+    prompts/system_prompt.txt file.
     """
     llm = (llm or ChatAnthropic(model=model_name)).bind_tools(ALL_TOOLS)
+    prompt = system_prompt if system_prompt is not None else load_system_prompt()
 
     def router(state: AgentState) -> dict:
         messages = state["messages"]
         if not any(isinstance(m, SystemMessage) for m in messages):
-            messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
+            messages = [SystemMessage(content=prompt)] + messages
         response = llm.invoke(messages)
         return {"messages": [response]}
 

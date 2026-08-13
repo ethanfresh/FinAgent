@@ -79,6 +79,43 @@
           "legendFormat": "{{le}}"
         }
       ]
+    },
+    {
+      "id": 7,
+      "title": "Canary pass rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "targets": [{ "expr": "finagent_canary_pass_rate" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 0.85 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Firing alerts",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 16 },
+      "targets": [{ "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)", "legendFormat": "{{alertname}}" }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
     }
   ]
 }
