@@ -62,11 +62,15 @@ is asking for, not three disconnected paragraphs. Only use figures, dates, and f
 that appear in the reports below — do not add anything the experts didn't report. \
 Cite source URLs as markdown links `[title](url)` with a short descriptive title, never \
 raw URLs. No other markdown (no asterisks, headers, bullets) since this renders in a \
-plain-text chat bubble. Do not give investment advice."""
+plain-text chat bubble. Do not give investment advice. Never name an internal tool or \
+function as a source, even if an expert report mentions one — attribute data to the real \
+provider instead (Yahoo Finance for price/fundamentals/news/executive data, SEC EDGAR for \
+filings)."""
 
 
 class MoEState(TypedDict):
     question: str
+    history: list[dict]
     active_experts: list[str]
     expert_reports: Annotated[dict, operator.or_]
     tool_calls: Annotated[list, operator.add]
@@ -79,6 +83,16 @@ def _parse_expert_list(text: str) -> list[str]:
     return active or ["financials"]
 
 
+def _question_with_history(question: str, history: list[dict] | None) -> str:
+    """Prefix the question with prior turns so every node in the graph — dispatch,
+    each expert, and the synthesizer — sees the same conversation a human reading
+    the chat transcript would, instead of just the newest message in isolation."""
+    if not history:
+        return f"Question: {question}"
+    lines = [f"{'User' if t.get('role') == 'user' else 'Assistant'}: {t.get('content', '')}" for t in history]
+    return "Conversation so far:\n" + "\n".join(lines) + f"\n\nQuestion: {question}"
+
+
 def _make_expert_node(name: str, tools: list, description: str, model_name: str):
     tools_by_name = {t.name: t for t in tools}
     system = (
@@ -86,12 +100,18 @@ def _make_expert_node(name: str, tools: list, description: str, model_name: str)
         f"{description}. Use your tools to answer the question, then write a focused "
         "2-4 sentence report grounded only in what the tools returned, including any "
         "source URLs the tools gave you. If your area turns out not to be relevant "
-        "to this specific question, say so briefly instead of forcing an answer."
+        "to this specific question, say so briefly instead of forcing an answer. Never "
+        "name an internal tool or function as your source — attribute data to the real "
+        "provider instead (Yahoo Finance for price/fundamentals/news/executive data, SEC "
+        "EDGAR for filings)."
     )
     llm = ChatAnthropic(model=model_name).bind_tools(tools)
 
     def node(state: MoEState) -> dict:
-        messages = [SystemMessage(content=system), HumanMessage(content=state["question"])]
+        messages = [
+            SystemMessage(content=system),
+            HumanMessage(content=_question_with_history(state["question"], state.get("history"))),
+        ]
         response = llm.invoke(messages)
 
         tool_calls_made = []
@@ -114,7 +134,10 @@ def build_moe_graph(model_name: str = "claude-sonnet-5"):
 
     def dispatch(state: MoEState) -> dict:
         response = dispatch_llm.invoke(
-            [SystemMessage(content=DISPATCH_PROMPT), HumanMessage(content=state["question"])]
+            [
+                SystemMessage(content=DISPATCH_PROMPT),
+                HumanMessage(content=_question_with_history(state["question"], state.get("history"))),
+            ]
         )
         return {"active_experts": _parse_expert_list(extract_text(response.content))}
 
@@ -125,9 +148,10 @@ def build_moe_graph(model_name: str = "claude-sonnet-5"):
         reports_text = "\n\n".join(
             f"[{name.upper()} EXPERT]\n{report}" for name, report in state["expert_reports"].items()
         )
+        question_block = _question_with_history(state["question"], state.get("history"))
         messages = [
             SystemMessage(content=SYNTHESIZER_PROMPT),
-            HumanMessage(content=f"Question: {state['question']}\n\nExpert reports:\n{reports_text}"),
+            HumanMessage(content=f"{question_block}\n\nExpert reports:\n{reports_text}"),
         ]
         response = synth_llm.invoke(messages)
         return {"answer": extract_text(response.content)}

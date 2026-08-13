@@ -18,8 +18,10 @@ class AgentResult:
 
 @runtime_checkable
 class AgentRunner(Protocol):
-    def run(self, question: str) -> AgentResult:
-        """Answer a question, returning the final answer and any tool calls made."""
+    def run(self, question: str, history: list[dict] | None = None) -> AgentResult:
+        """Answer a question, given optional prior turns as
+        [{"role": "user"|"assistant", "content": str}, ...], returning the final
+        answer and any tool calls made."""
 
 
 def load_runner() -> AgentRunner:
@@ -28,7 +30,7 @@ def load_runner() -> AgentRunner:
     Defaults to FinAgent's own LangGraph agent. Set FINAGENT_RUNNER to a
     "module.path:ClassName" dotted path to point the eval harness, canary
     job, and web app at a different agent without touching their code —
-    only the class needs to implement `run(question: str) -> AgentResult`.
+    only the class needs to implement `run(question: str, history=None) -> AgentResult`.
     """
     dotted_path = os.environ.get("FINAGENT_RUNNER", "finagent.agent.runner:FinAgentRunner")
     module_path, _, class_name = dotted_path.partition(":")

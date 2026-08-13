@@ -1,0 +1,26 @@
+[
+  {
+    "id": "stateless-conversation-context-failure",
+    "title": "/api/ask was stateless, so FinAgent denied its own prior replies mid-conversation",
+    "category": "context-failure / self-contradiction",
+    "severity": "high",
+    "found_in_reports": ["20260813T014031Z", "20260813T020747Z"],
+    "example_quote": "I don't have any earlier turn in this conversation where I provided Apple (or any other) quarterly numbers — this is the first message I'm seeing from you in this session.",
+    "fix_summary": "Threaded real conversation history through the whole stack: /api/ask now accepts a `history` field, finagent.agent.graph.run_graph() replays it as HumanMessage/AIMessage turns before the new question (finagent.agent.moe_graph does the equivalent for the mixture-of-experts agent via a formatted prefix), every AgentRunner (FinAgentRunner, MoEAgentRunner, BedrockAgentRunner) forwards it, and web/app.js now maintains and sends the running conversation from the actual chat UI. The red-team tester itself was updated to send history the same way a real browser session does, so it now tests the product the way a user actually experiences it.",
+    "files_changed": [
+      "src/finagent/web.py",
+      "src/finagent/runner.py",
+      "src/finagent/agent/graph.py",
+      "src/finagent/agent/runner.py",
+      "src/finagent/agent/bedrock_runner.py",
+      "src/finagent/agent/moe_graph.py",
+      "src/finagent/agent/moe_runner.py",
+      "src/finagent/redteam.py",
+      "web/app.js"
+    ],
+    "verified_by_report": "20260813T024049Z",
+    "verification_note": "A fresh live run (same 4 personas, same base app, history-aware tester) found 2 issues total, down from 8-11 in the two pre-fix runs, and zero were in the context-failure/self-contradiction category — across all 4 sessions, including Priya's persona which specifically pushes on cross-turn consistency. FinAgent correctly recalled and built on earlier turns throughout, at one point proactively cross-referencing itself: \"consistent with the same forward-dated data issue you flagged earlier.\"",
+    "known_caveat": "History is replayed as plain text only (no tool-call/tool-result blocks), so FinAgent can't always prove to itself that an earlier reply was tool-grounded. In one manual test, when pushed to re-verify a figure it had already correctly sourced from a tool, it re-called the tool (the right instinct) but mischaracterized its own earlier answer as \"fabricated\" when it hadn't been. Not part of this fix's scope; noted for a future pass.",
+    "fixed_at": "2026-08-13"
+  }
+]

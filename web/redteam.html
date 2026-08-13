@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FinAgent — Red Team</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app arch-app">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="9.5" cy="9.5" r="6.25" stroke="currentColor" stroke-width="2"/>
+            <path d="M6 11L8.25 7.25L10.25 9.5L12.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="14.1" y1="14.1" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1>FinAgent</h1>
+          <p>Simulated users, stress-testing real replies</p>
+        </div>
+      </div>
+      <nav class="top-nav">
+        <a class="nav-link" href="/">Chat</a>
+        <a class="nav-link" href="/architecture.html">Backend</a>
+        <a class="nav-link active" href="/redteam.html">Red Team</a>
+      </nav>
+    </header>
+
+    <main class="redteam-main">
+      <section class="redteam-section">
+        <h2>Adversarial user simulation</h2>
+        <p class="redteam-sub">An LLM plays a realistic end user and has a live, multi-turn conversation with this running app's real <code>/api/ask</code> — not a script. A second LLM pass, an unbiased-financial-advisor QA persona, then reads the transcript and flags concrete problems: hallucination, guardrail breaks, bias, evasiveness, factual errors, ungraceful tool failures.</p>
+
+        <div class="redteam-controls">
+          <label for="turns-input">Turns per persona
+            <input id="turns-input" type="number" min="1" max="8" value="4" />
+          </label>
+          <button id="run-btn" class="run-btn" type="button">Run new test</button>
+          <span id="run-status" class="run-status"></span>
+        </div>
+      </section>
+
+      <section class="redteam-section">
+        <h2>Personas</h2>
+        <p class="redteam-sub">Each holds its own live conversation; nothing here is canned.</p>
+        <div id="persona-grid" class="persona-grid"></div>
+      </section>
+
+      <section class="redteam-section">
+        <h2>Fixed issues</h2>
+        <p class="redteam-sub">Hand-curated: an engineer records an entry here only once the fix is actually made and re-verified by a real post-fix run — not auto-inferred from a single run's absence of a finding.</p>
+        <div id="fixes-list"></div>
+      </section>
+
+      <section class="redteam-section">
+        <h2>Reports</h2>
+        <div class="report-picker">
+          <select id="report-select"></select>
+          <span id="report-summary" class="report-summary"></span>
+        </div>
+        <div id="report-view"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/redteam.js"></script>
+</body>
+</html>

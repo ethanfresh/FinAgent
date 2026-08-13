@@ -19,11 +19,12 @@ Everything below is marked **built** (implemented and independently verified —
 | Mixture-of-experts agent (dispatcher → parallel experts → synthesizer) | **Built** — a second, structurally different agent (see [Mixture-of-experts agent](#mixture-of-experts-agent)); gating verified to actually discriminate, not just run everything |
 | Automated prompt optimization (`finagent optimize`) | **Built** — a real run improved the eval pass rate from 50% → 75%, independently re-confirmed at 88% on a fresh eval (see [Prompt optimization](#prompt-optimization)) |
 | Prometheus alerting (Alertmanager + Pushgateway) | **Built** — a real canary failure fired a `CanaryFailing` alert end-to-end through Prometheus → Alertmanager → a webhook receiver (see [Alerting](#alerting)) |
-| CLI (`ask`, `eval`, `canary`, `train`, `optimize`, `serve`) | **Built** |
+| CLI (`ask`, `eval`, `canary`, `train`, `optimize`, `redteam`, `serve`) | **Built** |
 | Web chat UI + Backend visualization page (FastAPI + `web/`) | **Built** |
 | `AgentRunner` protocol + `FINAGENT_RUNNER` swap mechanism | **Built** — proven with a real dummy agent swapped in via env var, not just written |
 | MCP stdio server (`finagent-mcp`) | **Built** — tested with a real MCP client |
 | Eval harness (LLM-as-judge, golden dataset) | **Built** |
+| Adversarial user simulation (`finagent redteam`) | **Built** — a real run against the live app found 8 genuine issues across 4 simulated-user sessions, including a stateless-conversation UX bug that's since been fixed and re-verified (see [Adversarial user simulation](#adversarial-user-simulation-red-team) / [Fixed issues](#fixed-issues)) |
 | Ray fan-out for eval/canary parallelism | **Built** |
 | W&B experiment logging | **Built** — logs to a real W&B project |
 | LangFuse tracing | **Built** — traces confirmed via LangFuse's API |
@@ -183,6 +184,8 @@ uv run finagent serve   # http://127.0.0.1:8000
 
 A second page at `/architecture.html` ("Backend" in the nav) is the full tour: the complete stack broken out by Development/Infrastructure/Ops with what each tool actually does in this codebase, the request pipeline (router → tool execution → synthesizer), the three tools and what they call out to, and live counters polled from a real `/api/stats` endpoint backed by the same Prometheus metrics as `/metrics` — not mock data.
 
+A third page at `/redteam.html` ("Red Team" in the nav) runs the adversarial user simulation described below from a button in the browser, no CLI needed (see [Adversarial user simulation](#adversarial-user-simulation-red-team)).
+
 ## MCP tool server
 
 The agent's tools (`edgar_filings`, `price_history`, `fundamental_ratios`) are exposed as a standalone MCP server, so any MCP client — Claude Desktop, another agent, a notebook — can use them directly:
@@ -211,6 +214,29 @@ uv run finagent eval --dataset evals/golden.jsonl --parallelism 4
 ```
 
 Runs are logged to W&B with the git SHA and model ID as metadata, so any two runs are directly comparable.
+
+## Adversarial user simulation (red-team)
+
+The golden-dataset eval above catches regressions against known reference answers; `finagent redteam` is the complementary, open-ended probe — no reference answers, just an LLM playing a realistic end user and a second LLM (an unbiased-financial-advisor QA persona) critiquing what FinAgent actually said:
+
+```bash
+uv run finagent serve &                # needs a live app to talk to
+uv run finagent redteam --turns 4
+```
+
+Four personas (a nervous first-time investor, a pushy user trying to get direct buy/sell advice out of it, a detail-oriented analyst stress-testing exact figures and dates, and someone poking at edge-case/nonexistent tickers) each hold a live multi-turn conversation against the real `/api/ask` endpoint. The conversation is genuinely reactive — each next user message is generated from the real prior FinAgent reply, not a fixed script. A critic pass then reads the full transcript and flags concrete problems (hallucinated claims, guardrail breaks, bias, evasiveness, factual/date errors, ungraceful tool failures) with a turn number and verbatim quote, writing both a JSON and a Markdown report to `artifacts/redteam/`.
+
+A real run against the live app found **8 genuine issues across 4 sessions**, the standout being a UX-breaking one: `/api/ask` was stateless (no conversation memory), so when a persona referenced something FinAgent had said one turn earlier, FinAgent flatly denied having said it ("I don't have any earlier turn in this conversation...") instead of acknowledging the product doesn't retain history — read as the assistant contradicting itself and actively eroded the simulated user's trust ("this is making me trust it less, not more"). Smaller findings: presenting a filing/price date without hedging that it could be an anomalous data point until the user pushed back, and one instance of asserting general knowledge (that `ZVZZT` is a NASDAQ test symbol) as if it were tool-verified fact in the same breath as genuinely grounded figures.
+
+**That statelessness bug has since been fixed** — see [Fixed issues](#fixed-issues) below.
+
+A third page in the web app, `/redteam.html` ("Red Team" in the nav), puts this in front of a browser instead of just a CLI: it lists the live personas from `/api/redteam/personas`, a "Run new test" button kicks off a real run in a background thread (`/api/redteam/run`, polled via `/api/redteam/status`) — so it survives the request finishing without a job queue — and every past report is browsable, transcript included, via `/api/redteam/reports`. Verified live end-to-end: triggered a run from the actual button in a browser, watched the status banner track it to completion, and confirmed the new report rendered with its real issues.
+
+### Fixed issues
+
+The Red Team page also tracks a hand-curated list of issues the tester found that were then actually fixed — `GET /api/redteam/fixes`, backed by the tracked `redteam_fixes.json` (not gitignored, unlike the raw run reports in `artifacts/redteam/`). An entry is only added once a fix is made *and* re-verified by a fresh live run — never auto-inferred from one run's absence of a finding.
+
+One entry so far: the stateless-conversation bug above. The fix threads real conversation history through the whole stack — `/api/ask` now accepts a `history` field, `agent/graph.py`'s `run_graph()` replays it as message turns before the new question (the mixture-of-experts graph does the equivalent via a formatted prefix, since it doesn't use a message-list state), every `AgentRunner` (`FinAgentRunner`, `MoEAgentRunner`, `BedrockAgentRunner`) forwards it, and the chat UI (`web/app.js`) now maintains and sends the running conversation — the red-team tester was updated the same way, so it now exercises the product exactly as a real browser session would. A fresh post-fix run found 2 issues total (down from 8-11 pre-fix) with **zero** in the context-failure/self-contradiction category across all 4 sessions, including one persona proactively cross-referencing its own earlier turn correctly ("consistent with the same forward-dated data issue you flagged earlier"). One known caveat, disclosed rather than hidden: history is replayed as plain text only (no tool-call internals), so under sufficiently skeptical pushback FinAgent can't always prove a prior reply was tool-grounded — in one manual test it re-verified correctly but mischaracterized an already-correct earlier answer as "fabricated." Not in scope for this fix; left as a known limitation.
 
 ## Prompt optimization
 

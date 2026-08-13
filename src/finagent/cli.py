@@ -82,5 +82,20 @@ def serve(host: str, port: int):
     uvicorn.run("finagent.web:app", host=host, port=port)
 
 
+@main.command()
+@click.option("--turns", default=4, show_default=True, help="Chat turns per simulated persona.")
+@click.option("--base-url", default="http://localhost:8000", show_default=True, help="FinAgent web app to talk to (must already be running).")
+def redteam(turns: int, base_url: str):
+    """Simulate real users chatting with FinAgent live and report problems found in its replies."""
+    from finagent.redteam import run_redteam, write_report
+
+    report = run_redteam(turns=turns, base_url=base_url)
+    json_path, md_path = write_report(report)
+    total_issues = sum(len(s["issues"]) for s in report["sessions"])
+    click.echo(f"{total_issues} issue(s) found across {len(report['sessions'])} persona sessions")
+    click.echo(f"report: {md_path}")
+    click.echo(f"raw:    {json_path}")
+
+
 if __name__ == "__main__":
     main()

@@ -25,7 +25,10 @@ _DEFAULT_SYSTEM_PROMPT = (
     "rendered in a plain-text chat bubble — with one exception: when citing a source URL "
     "(e.g. an EDGAR filing), write it as a markdown link `[title](url)` where the title is "
     "a short, human-readable label describing the source (e.g. 'NVDA 10-Q — filed "
-    "2026-05-20'), never the raw URL or link text like 'here' or 'this filing'."
+    "2026-05-20'), never the raw URL or link text like 'here' or 'this filing'. Never name "
+    "an internal tool or function (e.g. 'the fundamental_ratios tool') as the source — if "
+    "asked where a number came from, name the real provider instead: Yahoo Finance for "
+    "price/fundamentals/news/executive data, SEC EDGAR for filings."
 )
 
 
@@ -105,15 +108,33 @@ def build_graph(model_name: str = "claude-sonnet-5", llm=None, system_prompt: st
     return graph.compile()
 
 
-def run_graph(graph, question: str, backend: str = "anthropic") -> AgentResult:
+def _seed_messages(question: str, history: list[dict] | None) -> list:
+    """Turn prior [{"role": "user"|"assistant", "content": ...}, ...] turns into
+    HumanMessage/AIMessage history, followed by the new question. Only the visible
+    text is replayed (no tool-call internals) — the same shape a human re-reading
+    the chat transcript would see, which is enough context for a coherent follow-up."""
+    messages = []
+    for turn in history or []:
+        role, content = turn.get("role"), turn.get("content", "")
+        if role == "user":
+            messages.append(HumanMessage(content=content))
+        elif role == "assistant":
+            messages.append(AIMessage(content=content))
+    messages.append(HumanMessage(content=question))
+    return messages
+
+
+def run_graph(graph, question: str, backend: str = "anthropic", history: list[dict] | None = None) -> AgentResult:
     """Invoke a compiled graph and package the result as an AgentResult.
 
     Shared by every AgentRunner implementation (FinAgentRunner, BedrockAgentRunner, ...)
-    so LangFuse tagging and tool-call extraction stay in one place.
+    so LangFuse tagging and tool-call extraction stay in one place. `history` carries
+    prior turns from the same conversation so the agent doesn't lose context between
+    requests — /api/ask is otherwise a single stateless call per question.
     """
     environment = os.environ.get("FINAGENT_ENV", "runner")
     result = graph.invoke(
-        {"messages": [HumanMessage(content=question)]},
+        {"messages": _seed_messages(question, history)},
         config={"callbacks": langfuse_callbacks(), "metadata": {"environment": environment, "backend": backend}},
     )
     messages = result["messages"]

@@ -30,5 +30,5 @@ class BedrockAgentRunner:
         llm = ChatBedrock(model_id=model_id, region_name=region_name)
         self._graph = build_graph(llm=llm)
 
-    def run(self, question: str) -> AgentResult:
-        return run_graph(self._graph, question, backend="bedrock")
+    def run(self, question: str, history: list[dict] | None = None) -> AgentResult:
+        return run_graph(self._graph, question, backend="bedrock", history=history)

@@ -5,6 +5,10 @@ const formEl = document.getElementById("composer");
 const inputEl = document.getElementById("question-input");
 const sendBtn = document.getElementById("send-btn");
 
+// Sent back with every /api/ask request so the agent has the actual prior
+// turns instead of treating each question as the start of a new conversation.
+const conversationHistory = [];
+
 function scrollToBottom() {
   chatEl.scrollTop = chatEl.scrollHeight;
 }
@@ -83,7 +87,7 @@ async function ask(question) {
     const res = await fetch("/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history: conversationHistory }),
     });
 
     typingMsg.remove();
@@ -96,6 +100,8 @@ async function ask(question) {
 
     const data = await res.json();
     addAgentMessage(data.answer, data.tool_calls, false);
+    conversationHistory.push({ role: "user", content: question });
+    conversationHistory.push({ role: "assistant", content: data.answer });
   } catch (err) {
     typingMsg.remove();
     addAgentMessage(`Could not reach FinAgent: ${err.message}`, null, true);
