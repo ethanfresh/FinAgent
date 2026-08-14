@@ -19,15 +19,17 @@ from finagent.agent.graph import extract_text
 from finagent.runner import ToolCall
 from finagent.tools.edgar import edgar_filings
 from finagent.tools.executives import executive_profile
+from finagent.tools.filing_search import filing_search
 from finagent.tools.market_data import fundamental_ratios, price_history
 from finagent.tools.news import company_news
 
 EXPERTS = {
     "financials": {
-        "tools": [price_history, fundamental_ratios, edgar_filings],
+        "tools": [price_history, fundamental_ratios, edgar_filings, filing_search],
         "description": (
             "up-to-date financial figures: stock price history, fundamental ratios "
-            "(margins, P/E, ROE), and SEC filings"
+            "(margins, P/E, ROE), SEC filing metadata, and semantic search over filing "
+            "content (risk factors, MD&A, and other disclosures)"
         ),
     },
     "news": {

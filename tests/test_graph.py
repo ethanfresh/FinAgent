@@ -10,6 +10,7 @@ def test_tools_registered():
         "edgar_filings",
         "company_news",
         "executive_profile",
+        "filing_search",
     }
 
 

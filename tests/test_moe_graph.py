@@ -12,6 +12,7 @@ def test_experts_have_scoped_tools():
         "price_history",
         "fundamental_ratios",
         "edgar_filings",
+        "filing_search",
     }
     assert {t.name for t in EXPERTS["news"]["tools"]} == {"company_news"}
 

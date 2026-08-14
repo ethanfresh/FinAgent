@@ -16,10 +16,11 @@ Everything below is marked **built** (implemented and independently verified —
 |---|---|
 | LangGraph agent (router → tools → synthesizer) | **Built** |
 | Tools: `edgar_filings`, `price_history`, `fundamental_ratios`, `company_news`, `executive_profile` | **Built** |
+| `filing_search` — RAG over real SEC filing text (chunk → embed → Chroma → retrieve) | **Built** — a real run against a live NVDA/AAPL 10-K got 100% recall@k on a hand-verified golden set, and the agent used it live in conversation with zero tool-name leakage (see [Retrieval-augmented filing search](#retrieval-augmented-filing-search)) |
 | Mixture-of-experts agent (dispatcher → parallel experts → synthesizer) | **Built** — a second, structurally different agent (see [Mixture-of-experts agent](#mixture-of-experts-agent)); gating verified to actually discriminate, not just run everything |
 | Automated prompt optimization (`finagent optimize`) | **Built** — a real run improved the eval pass rate from 50% → 75%, independently re-confirmed at 88% on a fresh eval (see [Prompt optimization](#prompt-optimization)) |
 | Prometheus alerting (Alertmanager + Pushgateway) | **Built** — a real canary failure fired a `CanaryFailing` alert end-to-end through Prometheus → Alertmanager → a webhook receiver (see [Alerting](#alerting)) |
-| CLI (`ask`, `eval`, `canary`, `train`, `optimize`, `redteam`, `serve`) | **Built** |
+| CLI (`ask`, `eval`, `canary`, `train`, `optimize`, `redteam`, `index-filings`, `retrieval-eval`, `serve`) | **Built** |
 | Web chat UI + Backend visualization page (FastAPI + `web/`) | **Built** |
 | `AgentRunner` protocol + `FINAGENT_RUNNER` swap mechanism | **Built** — proven with a real dummy agent swapped in via env var, not just written |
 | MCP stdio server (`finagent-mcp`) | **Built** — tested with a real MCP client |
@@ -88,7 +89,8 @@ Everything below is marked **built** (implemented and independently verified —
 | PyTorch (`finagent train`) | Airflow (canary DAG; verified) | Sentry (error tracking) |
 | MCP (tool interface) | Jsonnet (manifest templating) | Prometheus + Grafana (metrics; verified) |
 | FastAPI (web + API) | Terraform (EKS, written/validated, unapplied) | Alertmanager + Pushgateway (alerting; verified) |
-| | | Weights & Biases (experiment + optimizer tracking) |
+| Chroma (local vector store) | | Weights & Biases (experiment + optimizer tracking) |
+| sentence-transformers (local embeddings) | | |
 
 ## Tools in detail
 
@@ -101,7 +103,7 @@ Every tool below is wired into real code, not just listed — file references po
 | Anthropic API (`anthropic`, `langchain-anthropic`) | `ChatAnthropic` in [agent/graph.py](src/finagent/agent/graph.py) is bound to tools and invoked in the router/synthesizer loop | The model that decides which tool to call and writes the final answer |
 | LangGraph | `StateGraph` in `agent/graph.py` wires `router → tools → synthesizer`; a second, structurally different graph in [agent/moe_graph.py](src/finagent/agent/moe_graph.py) wires `dispatch → {experts} → synthesize` with dynamic `Send`-based fan-out | Explicit, inspectable agent control flow — proven with two real architectures, not just one |
 | LangChain (`langchain`, `langchain-core`) | Supplies the `@tool` decorator (schema generation from type hints/docstrings) used in `tools/`, the message types (`HumanMessage`/`AIMessage`/`ToolMessage`), and the LangFuse callback integration | Shared plumbing between the agents, their tools, and tracing |
-| MCP (`mcp` SDK) | `FastMCP` in [mcp_server/server.py](src/finagent/mcp_server/server.py) wraps all five tool functions as an MCP stdio server | Exposes the tools to any MCP client (Claude Desktop, another agent) without duplicating tool logic |
+| MCP (`mcp` SDK) | `FastMCP` in [mcp_server/server.py](src/finagent/mcp_server/server.py) wraps all six tool functions as an MCP stdio server | Exposes the tools to any MCP client (Claude Desktop, another agent) without duplicating tool logic |
 | langchain-aws (`ChatBedrock`) | [agent/bedrock_runner.py](src/finagent/agent/bedrock_runner.py)'s `BedrockAgentRunner` passes a `ChatBedrock` instance into the same `build_graph()` used by the default runner | A second model backend selectable via `FINAGENT_RUNNER`, matching an AWS-native (Bedrock) deployment |
 
 **Data sources**
@@ -111,6 +113,15 @@ Every tool below is wired into real code, not just listed — file references po
 | yfinance | `tools/market_data.py` (`price_history`, `fundamental_ratios`), `tools/news.py` (`company_news`), `tools/executives.py` (`executive_profile`) — all pull from Yahoo Finance | Market data, recent news, and leadership/compensation data — the "up-to-date financial information, company news, executive reputation" story |
 | SEC EDGAR (via `requests`, no SDK) | `tools/edgar.py` calls SEC's public `company_tickers.json` and `submissions/CIK....json` endpoints directly with a required identifying `User-Agent` | The filings half of the grounding story — real 10-K/10-Q/8-K data |
 
+**Retrieval (RAG)**
+
+| Tool | How it's used | Purpose |
+|---|---|---|
+| BeautifulSoup + lxml | [rag/ingest.py](src/finagent/rag/ingest.py)'s `fetch_filing_text()` strips a real filing document (fetched from SEC EDGAR, not a summary) down to plain text | Turns a raw SEC HTML/inline-XBRL document into text worth chunking |
+| sentence-transformers (`all-MiniLM-L6-v2`) | [rag/store.py](src/finagent/rag/store.py)'s `embed_texts()`, run locally on CPU | Embeddings with no external API key/service — same "actually runnable in this dev environment" bar as everything else |
+| Chroma | `rag/store.py`'s `get_collection()` — a persistent local `PersistentClient` collection (`.chroma/`, gitignored) | A real vector database, not a hand-rolled cosine-similarity loop |
+| `finagent.tools.filing_search` | [tools/filing_search.py](src/finagent/tools/filing_search.py) — lazily indexes a ticker/form_type on first use, then does a metadata-filtered vector query | The retrieval tool itself, wired into both agents and the MCP server |
+
 **Web app & CLI**
 
 | Tool | How it's used | Purpose |
@@ -118,7 +129,7 @@ Every tool below is wired into real code, not just listed — file references po
 | FastAPI | [web.py](src/finagent/web.py) defines `POST /api/ask`, `GET /api/stats`, `GET /metrics`, and serves the static `web/` UI | HTTP layer between the browser and the agent |
 | uvicorn | ASGI server running the FastAPI app, launched via `finagent serve` and inside the Docker container | Production-grade server (not a dev-only one) |
 | Pydantic | `AskRequest` / `AskResponse` / `ToolCallOut` models in `web.py` | Request/response validation and typed JSON schemas |
-| Click | [cli.py](src/finagent/cli.py) defines the `finagent` command group (`ask`, `eval`, `canary`, `train`, `optimize`, `serve`) | Primary way to drive the agent/eval harness without the web UI |
+| Click | [cli.py](src/finagent/cli.py) defines the `finagent` command group (`ask`, `eval`, `canary`, `train`, `optimize`, `redteam`, `index-filings`, `retrieval-eval`, `serve`) | Primary way to drive the agent/eval harness without the web UI |
 | python-dotenv | `load_dotenv()` at the top of `cli.py`, `web.py`, `mcp_server/server.py` | Loads `.env` so local dev doesn't need vars exported manually |
 
 **Evaluation & parallelism**
@@ -162,6 +173,30 @@ Every tool below is wired into real code, not just listed — file references po
 | Jsonnet | [infra/jsonnet/](infra/jsonnet/) templates the Kubernetes manifests (`lib/finagent.libsonnet` + per-environment files) | One shared definition instead of copy-pasted YAML per environment |
 | kubectl / kind | `deploy/k8s/` holds the rendered manifests; `kind` runs a local cluster for testing | The orchestration layer the app runs on — EKS in production, kind locally |
 | GitHub Actions | [.github/workflows/ci.yml](.github/workflows/ci.yml) runs `ruff check` and `pytest` on every push/PR | CI gate |
+
+## Retrieval-augmented filing search
+
+Every other tool here either returns a link to a filing (`edgar_filings`) or a pre-computed ratio (`fundamental_ratios`) — none of them let the agent actually read what a filing *says*. `filing_search` closes that gap: real chunking, real local embeddings, a real vector database, and a real retrieval eval, not a `grep` dressed up as RAG.
+
+```bash
+uv sync --extra rag   # chromadb + sentence-transformers + beautifulsoup4/lxml
+uv run finagent index-filings NVDA --form-type 10-K   # optional pre-warm; filing_search also indexes lazily on first use
+uv run finagent retrieval-eval
+```
+
+**Ingestion** ([rag/ingest.py](src/finagent/rag/ingest.py)): fetches a filing's actual document from SEC EDGAR (not just its metadata), strips it to plain text with BeautifulSoup, and hands it to the chunker.
+
+**Chunking** ([rag/chunking.py](src/finagent/rag/chunking.py)): section-aware — 10-Ks and 10-Qs are organized into numbered "Item" sections (`Item 1A. Risk Factors`, `Item 2. Properties`, ...), and when those headers are detected, a chunk never straddles a section boundary, so every retrieved passage carries correct section context. Falls back to a fixed-size sliding window with overlap when no section structure is found. Pure text logic with no model/network dependency, so it's unit-tested unconditionally (`tests/test_chunking.py`) rather than gated behind the `rag` extra.
+
+**Embedding + storage** ([rag/store.py](src/finagent/rag/store.py)): `sentence-transformers` (`all-MiniLM-L6-v2`) runs locally on CPU — no embeddings API key, same "actually runnable in this dev environment" bar as the rest of the project — into a persistent local Chroma collection (`.chroma/`, gitignored).
+
+**The tool** ([tools/filing_search.py](src/finagent/tools/filing_search.py)): `filing_search(ticker, query, form_type, limit)` lazily indexes a ticker/form_type combination the first time it's asked about (fetch → chunk → embed → store, ~5-15s), then serves a metadata-filtered vector query. Wired into both agents (the flat runner's tool list and the MoE agent's `financials` expert) and the MCP server. Fails cleanly with a clear error — not an `ImportError` crash — if the `rag` extra isn't installed, so the rest of the app (including `finagent ask` with zero RAG usage) works fine without it; verified by simulating `chromadb`/`sentence-transformers` as absent and confirming the tool registry and graph still build.
+
+**Retrieval eval** ([evals/retrieval.py](src/finagent/evals/retrieval.py), `evals/retrieval_golden.jsonl`): recall@k against 4 hand-verified cases spanning two real companies (NVDA, AAPL) and three filing sections (Risk Factors, Properties). Deterministic substring + section match, not an LLM judge — "does this passage contain X" doesn't need one, and staying deterministic makes a regression unambiguous. Every `expected_substring` was taken from a passage this pipeline actually retrieved, not guessed at. A real run: **100% recall@k (4/4)**, logged to the same `finagent-evals` W&B project as the QA eval harness. Runs sequentially, not Ray-parallelized like `evals/run.py` — cases fetch real SEC filings, and hammering EDGAR concurrently isn't considerate of their service.
+
+Verified live in conversation, not just via direct tool calls: asked the running app "What does Nvidia's 10-K say about risks from competition?" and got back a multi-paragraph answer quoting and paraphrasing real retrieved passages from the actual Item 1A section, correctly cited, with the `filing_search`/`edgar_filings` tool names never appearing in the visible answer (see [Tools in detail](#tools-in-detail) above for the "never name the tool" rule).
+
+One environment-specific note kept for the next session: `chromadb`'s default dependency on `onnxruntime` has no macOS x86_64 wheels past `1.23.x`, and `sentence-transformers`' torch dependency needs `numpy<2` on this platform (same Rosetta/x86_64 situation as the `training` extra) — both pinned in the `rag` extra in `pyproject.toml`.
 
 ## Quickstart
 

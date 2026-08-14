@@ -5,6 +5,7 @@ load_dotenv()
 
 from finagent.tools.edgar import edgar_filings as _edgar_filings
 from finagent.tools.executives import executive_profile as _executive_profile
+from finagent.tools.filing_search import filing_search as _filing_search
 from finagent.tools.market_data import (
     fundamental_ratios as _fundamental_ratios,
 )
@@ -42,6 +43,12 @@ def company_news(ticker: str, limit: int = 5) -> dict:
 def executive_profile(ticker: str) -> dict:
     """Get a company's leadership: names, titles, ages, and compensation."""
     return _executive_profile.invoke({"ticker": ticker})
+
+
+@mcp.tool()
+def filing_search(ticker: str, query: str, form_type: str = "10-K", limit: int = 5) -> dict:
+    """Semantically search a company's SEC filing full text (requires the `rag` extra)."""
+    return _filing_search.invoke({"ticker": ticker, "query": query, "form_type": form_type, "limit": limit})
 
 
 def run() -> None:

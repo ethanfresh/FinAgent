@@ -27,6 +27,7 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.6"]
 training = ["torch>=2.0,<2.3", "transformers>=4.30,<4.50"]
 bedrock = ["langchain-aws>=0.2"]
+rag = ["chromadb>=0.5,<0.6", "sentence-transformers>=3.0,<3.1", "beautifulsoup4>=4.12", "lxml>=5.0", "onnxruntime<1.24", "numpy<2"]
 
 [project.scripts]
 finagent = "finagent.cli:main"

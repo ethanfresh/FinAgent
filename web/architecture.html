@@ -116,6 +116,37 @@
       </section>
 
       <section class="arch-section">
+        <h2>Retrieval pipeline</h2>
+        <p class="arch-sub">filing_search, on first use for a given company + form type: fetches the real filing document (not just its metadata), then chunks, embeds, and stores it locally.</p>
+        <div class="pipeline">
+          <div class="pipe-node">
+            <div class="pipe-title">SEC EDGAR</div>
+            <div class="pipe-detail">fetch the actual filing document</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node accent">
+            <div class="pipe-title">Chunk</div>
+            <div class="pipe-detail">section-aware (Item 1A, Item 2, ...), sliding-window fallback</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node accent">
+            <div class="pipe-title">Embed</div>
+            <div class="pipe-detail">sentence-transformers, local, no API key</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node accent">
+            <div class="pipe-title">Chroma</div>
+            <div class="pipe-detail">persistent local vector store</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            <div class="pipe-title">Search</div>
+            <div class="pipe-detail">top-k passages, section + source cited</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="arch-section">
         <h2>Tools</h2>
         <p class="arch-sub">The same functions back the agent and the standalone MCP server.</p>
         <div class="tool-grid">
@@ -133,6 +164,11 @@
             <div class="tool-card-head"><span class="tool-dot"></span>fundamental_ratios</div>
             <p class="tool-target">→ Yahoo Finance (yfinance)</p>
             <div class="tool-count" data-tool="fundamental_ratios">0 calls since server start</div>
+          </div>
+          <div class="tool-card">
+            <div class="tool-card-head"><span class="tool-dot"></span>filing_search</div>
+            <p class="tool-target">→ local vector index (Chroma + sentence-transformers) over real SEC filing text</p>
+            <div class="tool-count" data-tool="filing_search">0 calls since server start</div>
           </div>
         </div>
       </section>

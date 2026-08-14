@@ -1,0 +1,4 @@
+{"ticker": "NVDA", "form_type": "10-K", "query": "risks related to competition in the semiconductor industry", "expected_substring": "competition", "expected_section_contains": "Risk Factors"}
+{"ticker": "NVDA", "form_type": "10-K", "query": "properties and facilities owned or leased", "expected_substring": "Santa Clara", "expected_section_contains": "Properties"}
+{"ticker": "NVDA", "form_type": "10-K", "query": "data center revenue and AI infrastructure demand", "expected_substring": "AI infrastructure", "expected_section_contains": "Risk Factors"}
+{"ticker": "AAPL", "form_type": "10-K", "query": "reliance on suppliers and manufacturing partners outside the United States", "expected_substring": "outsourcing partners", "expected_section_contains": "Risk Factors"}

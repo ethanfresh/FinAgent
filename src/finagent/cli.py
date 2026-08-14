@@ -82,6 +82,30 @@ def serve(host: str, port: int):
     uvicorn.run("finagent.web:app", host=host, port=port)
 
 
+@main.command(name="index-filings")
+@click.argument("ticker")
+@click.option("--form-type", default="10-K", show_default=True)
+@click.option("--limit", default=1, show_default=True, help="How many recent filings of this form type to index.")
+def index_filings(ticker: str, form_type: str, limit: int):
+    """Fetch, chunk, embed, and store a company's filing text for filing_search (requires: uv sync --extra rag)."""
+    from finagent.rag.ingest import index_filing
+
+    result = index_filing(ticker, form_type=form_type, limit=limit)
+    if "error" in result:
+        raise click.ClickException(result["error"])
+    for f in result["filings_indexed"]:
+        click.echo(f"indexed {result['ticker']} {form_type} filed {f['filed']}: {f['chunks']} chunks")
+
+
+@main.command(name="retrieval-eval")
+@click.option("--dataset", default="evals/retrieval_golden.jsonl", show_default=True)
+def retrieval_eval(dataset: str):
+    """Run the filing-search retrieval pipeline against its golden dataset (requires: uv sync --extra rag)."""
+    from finagent.evals.retrieval import run_retrieval_eval
+
+    run_retrieval_eval(dataset)
+
+
 @main.command()
 @click.option("--turns", default=4, show_default=True, help="Chat turns per simulated persona.")
 @click.option("--base-url", default="http://localhost:8000", show_default=True, help="FinAgent web app to talk to (must already be running).")
