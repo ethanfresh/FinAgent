@@ -43,6 +43,8 @@
             <span class="stack-badge"><img class="badge-logo" src="/logos/anthropic.png" alt="" />Multi-backend runner (Anthropic + Bedrock, swappable)</span>
             <span class="stack-badge"><img class="badge-logo" src="/logos/langgraph.png" alt="" />Mixture-of-experts agent (dispatcher gates 3 scoped experts)</span>
             <span class="stack-badge"><img class="badge-logo" src="/logos/anthropic.png" alt="" />Prompt optimization (propose → score → adopt; 50% → 88% on a real run)</span>
+            <span class="stack-badge"><img class="badge-logo" src="/logos/chromadb.png" alt="" />Retrieval-augmented generation (chunk → embed → vector search over real filings)</span>
+            <span class="stack-badge"><img class="badge-logo" src="/logos/anthropic.png" alt="" />Adversarial user-simulation testing (LLM personas + critic find real bugs)</span>
           </div>
         </div>
 
@@ -53,7 +55,10 @@
               <li><img class="stack-logo" src="/logos/python.png" alt="" /><span class="stack-name">Python</span><span class="stack-how">the entire app — agent, tools, API, training, IaC glue</span></li>
               <li><img class="stack-logo" src="/logos/gnubash.png" alt="" /><span class="stack-name">Bash</span><span class="stack-how">Airflow's BashOperator invokes <code>finagent canary</code> across environments</span></li>
               <li><img class="stack-logo" src="/logos/langgraph.png" alt="" /><span class="stack-name">LangGraph</span><span class="stack-how">the router/tools/synthesizer agent graph</span></li>
+              <li><img class="stack-logo" src="/logos/langchain.png" alt="" /><span class="stack-name">LangChain</span><span class="stack-how"><code>@tool</code> decorator, message types, LangFuse callback integration — shared plumbing across both agents</span></li>
+              <li><img class="stack-logo" src="/logos/fastapi.png" alt="" /><span class="stack-name">FastAPI</span><span class="stack-how"><code>/api/ask</code>, <code>/api/redteam/*</code>, <code>/api/stats</code>, and the static web UI</span></li>
               <li><img class="stack-logo" src="/logos/pytorch.png" alt="" /><span class="stack-name">PyTorch</span><span class="stack-how"><code>finagent train</code> — real SFT loop on judge-graded transcripts</span></li>
+              <li><img class="stack-logo" src="/logos/huggingface.png" alt="" /><span class="stack-name">sentence-transformers</span><span class="stack-how">local embedding model for <code>filing_search</code> — no API key, runs on CPU</span></li>
             </ul>
           </div>
 
@@ -66,6 +71,7 @@
               <li><img class="stack-logo" src="/logos/jsonnet.png" alt="" /><span class="stack-name">Jsonnet</span><span class="stack-how">templates the k8s manifests for local/prod</span></li>
               <li><img class="stack-logo" src="/logos/terraform.png" alt="" /><span class="stack-name">Terraform</span><span class="stack-how">EKS/IAM/SageMaker/S3, <code>validate</code>-clean, unapplied (no AWS account)</span></li>
               <li><img class="stack-logo" src="/logos/docker.png" alt="" /><span class="stack-name">Docker</span><span class="stack-how">app image, built and run locally</span></li>
+              <li><img class="stack-logo" src="/logos/chromadb.png" alt="" /><span class="stack-name">Chroma</span><span class="stack-how">persistent local vector database backing <code>filing_search</code></span></li>
             </ul>
           </div>
 
@@ -169,6 +175,16 @@
             <div class="tool-card-head"><span class="tool-dot"></span>filing_search</div>
             <p class="tool-target">→ local vector index (Chroma + sentence-transformers) over real SEC filing text</p>
             <div class="tool-count" data-tool="filing_search">0 calls since server start</div>
+          </div>
+          <div class="tool-card">
+            <div class="tool-card-head"><span class="tool-dot"></span>company_news</div>
+            <p class="tool-target">→ Yahoo Finance (yfinance)</p>
+            <div class="tool-count" data-tool="company_news">0 calls since server start</div>
+          </div>
+          <div class="tool-card">
+            <div class="tool-card-head"><span class="tool-dot"></span>executive_profile</div>
+            <p class="tool-target">→ Yahoo Finance (yfinance)</p>
+            <div class="tool-count" data-tool="executive_profile">0 calls since server start</div>
           </div>
         </div>
       </section>
