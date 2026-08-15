@@ -2,7 +2,7 @@
 
 **A reference platform for building, evaluating, and observing LLM agents in financial workflows.**
 
-FinAgent is a financial research agent — it answers questions about public companies using SEC EDGAR filings and market data — but the agent is intentionally simple. The point of this project is everything *around* the agent: the evaluation harness, fine-tuning loop, observability layer, orchestration, and deployment tooling that turn an agent prototype into something an ML team could actually operate in production.
+FinAgent is a financial research agent. It answers questions about public companies using SEC EDGAR filings and market data, but the agent is intentionally simple. The point of this project is everything around the agent: the evaluation harness, fine-tuning loop, observability layer, orchestration, and deployment tooling that turn an agent prototype into something an ML team could actually operate in production.
 
 Think of it as the harness an ML platform team would hand to engineers and say: *"Onboard your agent here, and you get evals, tracing, drift detection, and CI for free."*
 
