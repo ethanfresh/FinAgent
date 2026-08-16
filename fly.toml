@@ -1,0 +1,44 @@
+# Fly.io config for the public demo at finagent.freshbuilds.dev
+#
+# Sizing note: the app measures ~455MB resident with the web stack, the
+# CPU-only torch build, and the sentence-transformers embedder all loaded, so
+# 512MB leaves no headroom for request handling. 1GB is the smallest size that
+# isn't operating at the edge.
+
+app = "finagent"
+primary_region = "iad"
+
+[build]
+
+[env]
+  # Caps every token-spending endpoint. See web.py for what this switches off.
+  FINAGENT_PUBLIC_DEMO = "1"
+  # filing_search answers from the index baked into the image instead of
+  # indexing a fresh 10-K on demand — indexing takes minutes on a shared CPU,
+  # which a visitor would experience as a hang. Run scripts/prewarm-index.sh
+  # before deploying to choose which filings ship.
+  FINAGENT_RAG_INDEX_ON_DEMAND = "0"
+  FINAGENT_CHROMA_DIR = "/app/.chroma"
+  PORT = "8000"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # Kept warm on purpose: this is a portfolio link, and a cold start costs a
+  # first-time visitor roughly ten seconds of blank page. Set to 0 to trade
+  # that first impression for a lower bill.
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    path = "/health"
+    method = "GET"
+    interval = "30s"
+    timeout = "5s"
+    # Generous, because startup imports torch and the embedding model.
+    grace_period = "45s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

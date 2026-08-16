@@ -1,8 +1,19 @@
+# Note: .chroma/ and artifacts/redteam/ are deliberately NOT ignored — the
+# prebuilt filing index and the saved red-team reports both ship in the image
+# so the deployed demo has them without doing any work at startup.
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 .env
 .git/
+.github/
 .pytest_cache/
+.ruff_cache/
+.DS_Store
 .finagent/
 wandb/
+artifacts/judge-checkpoint/
+infra/terraform/.terraform/
+infra/airflow/logs/
+infra/airflow/airflow.db

@@ -1,6 +1,18 @@
+import os
+
 from langchain_core.tools import tool
 
 from finagent.rag.store import RagDependencyError
+
+
+def _index_on_demand() -> bool:
+    """Whether a filing that isn't in the index yet may be fetched and embedded
+    inline. True locally, where waiting a couple of minutes is fine. Turned off
+    on the hosted demo, where indexing a full 10-K on a shared CPU would stall
+    the request past any sensible timeout — there, the index shipped in the
+    image is the whole corpus.
+    """
+    return os.environ.get("FINAGENT_RAG_INDEX_ON_DEMAND", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
 @tool
@@ -18,10 +30,25 @@ def filing_search(ticker: str, query: str, form_type: str = "10-K", limit: int =
         limit: Max number of passages to return.
     """
     from finagent.rag.ingest import index_filing
-    from finagent.rag.store import embed_texts, get_collection, is_indexed
+    from finagent.rag.store import (
+        embed_texts,
+        get_collection,
+        indexed_filings,
+        is_indexed,
+    )
 
     try:
         if not is_indexed(ticker, form_type):
+            if not _index_on_demand():
+                available = ", ".join(f"{f['ticker']} {f['form_type']}" for f in indexed_filings())
+                return {
+                    "ticker": ticker.upper(),
+                    "query": query,
+                    "error": (
+                        f"{ticker.upper()} {form_type} is not in this deployment's filing index, and "
+                        f"indexing new filings is disabled here. Searchable filings: {available or 'none'}."
+                    ),
+                }
             result = index_filing(ticker, form_type=form_type, limit=1)
             if "error" in result:
                 return {"ticker": ticker, "query": query, "error": result["error"]}

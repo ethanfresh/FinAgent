@@ -17,7 +17,10 @@ from pathlib import Path
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-CHROMA_DIR = Path(".chroma")
+# Relative by default so local dev keeps its index in the repo root, but
+# overridable because the deployed container needs it on a writable path that
+# survives restarts (a mounted volume) rather than under the process CWD.
+CHROMA_DIR = Path(os.environ.get("FINAGENT_CHROMA_DIR", ".chroma"))
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 COLLECTION_NAME = "sec_filings"
 
@@ -56,3 +59,19 @@ def get_collection():
 def is_indexed(ticker: str, form_type: str) -> bool:
     result = get_collection().get(where={"$and": [{"ticker": ticker.upper()}, {"form_type": form_type}]}, limit=1)
     return len(result["ids"]) > 0
+
+
+def indexed_filings() -> list[dict]:
+    """The distinct filings currently in the collection.
+
+    Used to tell the caller what's actually searchable when on-demand indexing
+    is turned off (see filing_search), so a miss produces a useful answer
+    rather than a bare "not found".
+    """
+    result = get_collection().get(include=["metadatas"])
+    seen: dict[tuple[str, str], dict] = {}
+    for meta in result.get("metadatas") or []:
+        ticker, form_type = meta.get("ticker"), meta.get("form_type")
+        if ticker and form_type and (ticker, form_type) not in seen:
+            seen[(ticker, form_type)] = {"ticker": ticker, "form_type": form_type, "filed": meta.get("filed")}
+    return sorted(seen.values(), key=lambda d: (d["ticker"], d["form_type"]))

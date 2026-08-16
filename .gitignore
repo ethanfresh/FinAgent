@@ -18,6 +18,12 @@ infra/airflow/webserver_config.py
 infra/airflow/logs/
 infra/airflow/*.pid
 infra/airflow/standalone_admin_password.txt
-artifacts/
+artifacts/*
+# Red-team reports are tracked on purpose: the hosted demo serves them
+# read-only (live runs are disabled there), so they need to be in the repo
+# rather than existing only on whichever machine last ran the tester.
+!artifacts/redteam/
 infra/observability/webhook_received.jsonl
+# The filing index is a build input, not source — rebuild it with
+# scripts/prewarm-index.sh before deploying. It ships in the image, not in git.
 .chroma/
