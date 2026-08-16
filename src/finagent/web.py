@@ -341,4 +341,22 @@ def redteam_fixes() -> list[dict]:
     return json.loads(REDTEAM_FIXES_PATH.read_text())
 
 
-app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="static")
+class RevalidatingStaticFiles(StaticFiles):
+    """Static assets that must be revalidated before reuse.
+
+    Starlette sends ETag and Last-Modified but no Cache-Control, which leaves
+    browsers applying heuristic freshness — they will happily serve a cached
+    style.css for hours without asking whether it changed. The visible symptom
+    is a deploy landing new markup against old CSS.
+
+    `no-cache` is not `no-store`: the browser still caches the file, it just has
+    to revalidate first, and the ETag turns that into a cheap 304 with no body.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
+app.mount("/", RevalidatingStaticFiles(directory=WEB_DIR, html=True), name="static")

@@ -52,6 +52,10 @@ body {
   max-width: 720px;
   margin: 0 auto;
   height: 100vh;
+  /* dvh tracks the viewport as mobile browser chrome hides and reveals itself;
+     with plain vh the composer sits under the address bar on iOS Safari. The
+     vh line above stays as the fallback for browsers without dvh. */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   padding: 0 20px;
@@ -136,6 +140,67 @@ body {
   margin: 2px 0 0;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+/* The header is a two-column layout (brand | nav) that a phone width cannot
+   hold: the nav does not shrink, so the title ends up underneath the first
+   pill and the last pill runs off-screen. Below 640px give each its own row
+   and let the pills share the width evenly. */
+@media (max-width: 640px) {
+  .app {
+    padding: 0 16px;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 18px 0 12px;
+  }
+
+  .top-nav {
+    padding-top: 0;
+    gap: 6px;
+  }
+
+  .nav-link {
+    flex: 1;
+    text-align: center;
+    padding: 8px 10px;
+  }
+
+  .brand-text p {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+}
+
+/* Small phones (iPhone SE and similar): step the brand down so the title and
+   the three pills each stay on one line. */
+@media (max-width: 380px) {
+  .brand {
+    gap: 10px;
+  }
+
+  .brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+  }
+
+  .brand-mark svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .brand-text h1 {
+    font-size: 18px;
+  }
+
+  .nav-link {
+    font-size: 12px;
+    padding: 8px 6px;
+  }
 }
 
 .chat {

@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FinAgent — Backend</title>
-<link rel="stylesheet" href="/style.css" />
+<link rel="stylesheet" href="/style.css?v=2" />
 </head>
 <body>
   <div class="app arch-app">
@@ -30,6 +30,29 @@
     </header>
 
     <main class="arch-main">
+      <section class="arch-section">
+        <h2>Live stats</h2>
+        <p class="arch-sub">Polled from <code>/api/stats</code> every 5s</p>
+        <div class="stats-grid">
+          <div class="stat-tile">
+            <div class="stat-value" id="stat-ok">0</div>
+            <div class="stat-label">requests ok</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="stat-error">0</div>
+            <div class="stat-label">requests errored</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="stat-latency">—</div>
+            <div class="stat-label">avg latency</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value" id="stat-calls">0</div>
+            <div class="stat-label">tool calls</div>
+          </div>
+        </div>
+      </section>
+
       <section class="arch-section">
         <h2>Stack</h2>
         <p class="arch-sub">Every entry here is wired into running code on this page, not a bullet list — hover the "how" line for the actual mechanism.</p>
@@ -82,7 +105,7 @@
               <li><img class="stack-logo" src="/logos/amazonaws.png" alt="" /><span class="stack-name">AWS (Bedrock, SageMaker)</span><span class="stack-how">Bedrock model backend + SageMaker training role, real code, no live account</span></li>
               <li><img class="stack-logo" src="/logos/langfuse.png" alt="" /><span class="stack-name">LangFuse</span><span class="stack-how">traces every LLM call, tagged by environment</span></li>
               <li><img class="stack-logo" src="/logos/sentry.png" alt="" /><span class="stack-name">Sentry</span><span class="stack-how">exception capture, wired into CLI + web</span></li>
-              <li><img class="stack-logo" src="/logos/prometheus.png" alt="" /><span class="stack-name">Prometheus</span><span class="stack-how"><code>/metrics</code> — the live stats below come from here; 4 alert rules fire through Alertmanager + Pushgateway</span></li>
+              <li><img class="stack-logo" src="/logos/prometheus.png" alt="" /><span class="stack-name">Prometheus</span><span class="stack-how"><code>/metrics</code> — the live stats above come from here; 4 alert rules fire through Alertmanager + Pushgateway</span></li>
               <li><img class="stack-logo" src="/logos/grafana.png" alt="" /><span class="stack-name">Grafana</span><span class="stack-how">8-panel dashboard on Prometheus, verified with real data</span></li>
               <li><img class="stack-logo" src="/logos/weightsandbiases.png" alt="" /><span class="stack-name">Weights &amp; Biases</span><span class="stack-how">every eval + optimizer run logged with pass rate + git SHA</span></li>
             </ul>
@@ -212,31 +235,9 @@
         </div>
       </section>
 
-      <section class="arch-section">
-        <h2>Live stats</h2>
-        <p class="arch-sub">Polled from <code>/api/stats</code> every 5s</p>
-        <div class="stats-grid">
-          <div class="stat-tile">
-            <div class="stat-value" id="stat-ok">0</div>
-            <div class="stat-label">requests ok</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value" id="stat-error">0</div>
-            <div class="stat-label">requests errored</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value" id="stat-latency">—</div>
-            <div class="stat-label">avg latency</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value" id="stat-calls">0</div>
-            <div class="stat-label">tool calls</div>
-          </div>
-        </div>
-      </section>
     </main>
   </div>
 
-  <script src="/architecture.js"></script>
+  <script src="/architecture.js?v=2"></script>
 </body>
 </html>
