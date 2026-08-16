@@ -47,11 +47,18 @@ def _env_int(name: str, default: int) -> int:
 # the caller can't raise. All of this is off/unbounded-enough by default so
 # local dev, the CLI, and the eval harness behave exactly as before.
 PUBLIC_DEMO = _env_flag("FINAGENT_PUBLIC_DEMO")
-MAX_QUESTION_CHARS = _env_int("FINAGENT_MAX_QUESTION_CHARS", 1000)
-MAX_HISTORY_MESSAGES = _env_int("FINAGENT_MAX_HISTORY_MESSAGES", 20)
-RATE_LIMIT_PER_MINUTE = _env_int("FINAGENT_RATE_LIMIT_PER_MINUTE", 6)
-RATE_LIMIT_PER_HOUR = _env_int("FINAGENT_RATE_LIMIT_PER_HOUR", 40)
-GLOBAL_DAILY_CAP = _env_int("FINAGENT_GLOBAL_DAILY_CAP", 500)
+
+# These ceilings exist to bound what a stranger can spend, so they only bind
+# when the app is actually exposed as the public demo. Applying them locally
+# would throttle the project's own tooling: `finagent redteam` drives four
+# personas through several turns each in quick succession, which trips a
+# 6-per-minute limit partway through a run. A zero means "no limit"; every
+# value stays individually overridable by environment variable.
+MAX_QUESTION_CHARS = _env_int("FINAGENT_MAX_QUESTION_CHARS", 1000 if PUBLIC_DEMO else 100_000)
+MAX_HISTORY_MESSAGES = _env_int("FINAGENT_MAX_HISTORY_MESSAGES", 20 if PUBLIC_DEMO else 200)
+RATE_LIMIT_PER_MINUTE = _env_int("FINAGENT_RATE_LIMIT_PER_MINUTE", 6 if PUBLIC_DEMO else 0)
+RATE_LIMIT_PER_HOUR = _env_int("FINAGENT_RATE_LIMIT_PER_HOUR", 40 if PUBLIC_DEMO else 0)
+GLOBAL_DAILY_CAP = _env_int("FINAGENT_GLOBAL_DAILY_CAP", 500 if PUBLIC_DEMO else 0)
 MAX_REDTEAM_TURNS = 8
 
 
