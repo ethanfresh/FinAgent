@@ -27,3 +27,45 @@ jobs:
 
       - name: Test
         run: uv run pytest -v
+
+  deploy:
+    # Publishes the demo at finagent.freshbuilds.dev. Gated on lint-and-test so
+    # a red build can never reach the public URL, and on main-only pushes so
+    # pull requests don't deploy.
+    needs: lint-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Two pushes in quick succession would otherwise race the same app.
+    concurrency:
+      group: deploy-finagent
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      # The filing index is a build input that is not in git (it is binary and
+      # regenerable), so CI has to build it before the image is packaged —
+      # otherwise the deployed filing_search would have an empty corpus and
+      # report that nothing is searchable. Rebuilding here also means each
+      # deploy ships the most recently filed 10-K rather than whatever was on
+      # the machine that last deployed by hand.
+      - name: Install RAG dependencies
+        run: uv sync --extra rag
+
+      - name: Build the filing index
+        run: ./scripts/prewarm-index.sh
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # --remote-only builds on Fly's builder, so the runner needs no Docker.
+      - name: Deploy
+        run: flyctl deploy --remote-only --yes
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
