@@ -13,6 +13,8 @@ __pycache__/
 .DS_Store
 .finagent/
 wandb/
+# 272MB of Airflow's own virtualenv, which the app never runs from.
+.airflow-venv/
 artifacts/judge-checkpoint/
 infra/terraform/.terraform/
 infra/airflow/logs/
