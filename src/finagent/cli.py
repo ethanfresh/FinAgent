@@ -74,7 +74,10 @@ def optimize(dataset: str, rounds: int, candidates: int):
 
 @main.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
-@click.option("--port", default=8000, show_default=True)
+# Hosting platforms assign the port at runtime via $PORT; falling back to it
+# keeps the same image deployable on Fly, Render, or anything else without a
+# custom start command, while local `finagent serve` still defaults to 8000.
+@click.option("--port", default=lambda: int(os.environ.get("PORT", "8000")), show_default="$PORT or 8000")
 def serve(host: str, port: int):
     """Run the FinAgent web app."""
     import uvicorn

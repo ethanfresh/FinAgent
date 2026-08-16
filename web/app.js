@@ -9,6 +9,11 @@ const sendBtn = document.getElementById("send-btn");
 // turns instead of treating each question as the start of a new conversation.
 const conversationHistory = [];
 
+// Must stay at or below the server's FINAGENT_MAX_HISTORY_MESSAGES, which
+// rejects oversized payloads; without trimming, a long session would eventually
+// send more history than the API accepts.
+const MAX_HISTORY_MESSAGES = 20;
+
 function scrollToBottom() {
   chatEl.scrollTop = chatEl.scrollHeight;
 }
@@ -93,8 +98,20 @@ async function ask(question) {
     typingMsg.remove();
 
     if (!res.ok) {
-      const detail = await res.text();
-      addAgentMessage(`Something went wrong: ${detail || res.statusText}`, null, true);
+      if (res.status === 422) {
+        addAgentMessage("That question is a bit too long — try trimming it down.", null, true);
+        return;
+      }
+      // FastAPI returns the human-readable reason in `detail`. Rate-limit
+      // replies in particular are written to be read by the visitor, so show
+      // them as-is rather than dumping a raw JSON body into the transcript.
+      let detail = "";
+      try {
+        detail = (await res.json()).detail || "";
+      } catch {
+        detail = res.statusText;
+      }
+      addAgentMessage(res.status === 429 ? detail : `Something went wrong: ${detail}`, null, true);
       return;
     }
 
@@ -102,6 +119,11 @@ async function ask(question) {
     addAgentMessage(data.answer, data.tool_calls, false);
     conversationHistory.push({ role: "user", content: question });
     conversationHistory.push({ role: "assistant", content: data.answer });
+    // The server caps how much history it will accept, so keep the most recent
+    // turns rather than letting a long session grow into a rejected request.
+    if (conversationHistory.length > MAX_HISTORY_MESSAGES) {
+      conversationHistory.splice(0, conversationHistory.length - MAX_HISTORY_MESSAGES);
+    }
   } catch (err) {
     typingMsg.remove();
     addAgentMessage(`Could not reach FinAgent: ${err.message}`, null, true);

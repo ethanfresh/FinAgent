@@ -181,11 +181,29 @@ async function loadReports(selectName) {
   }
 }
 
+const DEMO_NOTICE = "Live runs are disabled on the public demo — browse the saved reports below.";
+let runEnabled = true;
+
 function setRunning(isRunning, label) {
-  runBtn.disabled = isRunning;
-  turnsInput.disabled = isRunning;
-  runStatusEl.textContent = label || "";
+  runBtn.disabled = isRunning || !runEnabled;
+  turnsInput.disabled = isRunning || !runEnabled;
+  runStatusEl.textContent = label || (runEnabled ? "" : DEMO_NOTICE);
   runStatusEl.className = "run-status" + (isRunning ? " running" : "");
+}
+
+// A run costs real API budget, so the hosted demo serves saved reports only.
+// Reflect that in the controls instead of letting the button fire a request
+// the server is going to reject with a 403.
+async function applyConfig() {
+  try {
+    const res = await fetch("/api/config");
+    if (!res.ok) return;
+    const config = await res.json();
+    runEnabled = config.redteam_run_enabled !== false;
+  } catch {
+    // Leave the controls enabled — the server still enforces the real rule.
+  }
+  setRunning(false, "");
 }
 
 async function pollStatus() {
@@ -219,6 +237,7 @@ async function pollStatus() {
 }
 
 async function startRun() {
+  if (!runEnabled) return;
   const turns = Math.max(1, Math.min(8, parseInt(turnsInput.value, 10) || 4));
   setRunning(true, "Starting...");
   try {
@@ -228,6 +247,13 @@ async function startRun() {
       body: JSON.stringify({ turns }),
     });
     const data = await res.json();
+    if (!res.ok) {
+      // The server is the authority on whether runs are allowed; if it says no,
+      // stop offering the button regardless of what /api/config reported.
+      if (res.status === 403) runEnabled = false;
+      setRunning(false, data.detail || `Could not start run (HTTP ${res.status}).`);
+      return;
+    }
     if (data.status === "already_running") {
       setRunning(true, "A run is already in progress...");
     }
@@ -241,7 +267,9 @@ async function startRun() {
 runBtn.addEventListener("click", startRun);
 reportSelectEl.addEventListener("change", () => loadReport(reportSelectEl.value));
 
+// applyConfig first, so the run controls settle into the right state before
+// pollStatus can report on them.
+applyConfig().then(pollStatus);
 loadPersonas();
 loadFixes();
 loadReports();
-pollStatus();

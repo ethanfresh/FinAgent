@@ -29,6 +29,19 @@ training = ["torch>=2.0,<2.3", "transformers>=4.30,<4.50"]
 bedrock = ["langchain-aws>=0.2"]
 rag = ["chromadb>=0.5,<0.6", "sentence-transformers>=3.0,<3.1", "beautifulsoup4>=4.12", "lxml>=5.0", "onnxruntime<1.24", "numpy<2"]
 
+# sentence-transformers (the `rag` extra) depends on torch, and torch's default
+# PyPI wheel for Linux bundles ~2.5GB of CUDA libraries. The deployed demo runs
+# embeddings on CPU, so pull torch from PyTorch's CPU-only index on Linux —
+# this is what keeps the container image in the hundreds of MB rather than
+# multiple GB. macOS wheels have no CUDA variant, so local dev is unaffected.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
 [project.scripts]
 finagent = "finagent.cli:main"
 finagent-mcp = "finagent.mcp_server.server:run"

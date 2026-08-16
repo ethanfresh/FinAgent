@@ -396,6 +396,52 @@ kubectl create secret generic finagent-secrets -n finagent --from-env-file=.env
 kubectl apply -f deploy/k8s/
 ```
 
+## Public demo deployment
+
+The hosted demo runs as a single Fly.io machine behind `finagent.freshbuilds.dev`. It's the same image and the same code path as local development — the difference is entirely in configuration, because a public endpoint spends the maintainer's own Anthropic API budget on behalf of anyone who finds it.
+
+**What public mode changes** (`FINAGENT_PUBLIC_DEMO=1`):
+
+| Guard | Default | Why |
+|---|---|---|
+| `FINAGENT_RATE_LIMIT_PER_MINUTE` | 6 | Stops a single visitor (or a tab left on refresh) from running up a bill |
+| `FINAGENT_RATE_LIMIT_PER_HOUR` | 40 | Same, over a longer window |
+| `FINAGENT_GLOBAL_DAILY_CAP` | 500 | The real budget backstop — per-IP limits don't help against distributed traffic, and unlike the per-IP counters no request header can bypass this one |
+| `FINAGENT_MAX_QUESTION_CHARS` | 1000 | Caps input tokens per request |
+| `FINAGENT_MAX_HISTORY_MESSAGES` | 20 | Caps how much conversation gets replayed to the model each turn |
+| Red-team runs | disabled | A run is 4 personas × N turns of live LLM calls. The demo serves the saved reports in `artifacts/redteam/` read-only; `/api/config` tells the frontend to disable the button, and `POST /api/redteam/run` returns 403 regardless |
+| `FINAGENT_RAG_INDEX_ON_DEMAND=0` | — | Indexing a fresh 10-K takes minutes on a shared CPU, which a visitor experiences as a hang. `filing_search` answers from the index baked into the image and names the filings it does have when asked for one it doesn't |
+
+None of this is on by default, so local development, the CLI, and the eval harness are unaffected.
+
+**Image notes.** `sentence-transformers` depends on torch, whose default Linux wheel bundles ~2.5GB of CUDA libraries that a CPU-only demo will never execute. `pyproject.toml` pins torch to PyTorch's CPU index on Linux, which is what keeps the image at a sane size. The embedding model is downloaded at build time rather than first request — otherwise every restart would re-fetch it onto an ephemeral filesystem.
+
+**Sizing.** The app measures ~455MB resident with the web stack, CPU torch, and the embedder all loaded, so `fly.toml` asks for 1GB. 512MB would run at the edge with no headroom for request handling.
+
+```bash
+# 1. Build the filing index that ships in the image. The demo can only search
+#    filings indexed here, since on-demand indexing is off in production.
+./scripts/prewarm-index.sh                       # or: TICKERS="AAPL NVDA" ./scripts/prewarm-index.sh
+
+# 2. Create the app and give it the one secret it needs.
+fly launch --no-deploy --name finagent
+fly secrets set ANTHROPIC_API_KEY=sk-ant-...     # plus LANGFUSE_*/SENTRY_DSN/WANDB_API_KEY if wanted
+
+# 3. Ship it.
+fly deploy
+
+# 4. Point the subdomain at it (adds the DNS record and provisions TLS).
+fly certs add finagent.freshbuilds.dev
+```
+
+Then add a CNAME for `finagent` at the registrar pointing to the app's `.fly.dev` hostname, and link to it from the portfolio page at `freshbuilds.dev/finagent`.
+
+To preview exactly what a visitor sees before deploying, run the demo-mode config locally on port 8001:
+
+```bash
+FINAGENT_PUBLIC_DEMO=1 FINAGENT_RAG_INDEX_ON_DEMAND=0 uv run finagent serve --port 8001
+```
+
 ## Onboarding a new agent
 
 The platform is agent-agnostic by construction, not just by description: `web.py`, `cli.py`, and the eval/canary harness never import FinAgent's own agent directly — they all call [runner.py](src/finagent/runner.py)'s `load_runner()`, which instantiates whatever class `FINAGENT_RUNNER` points at (a `"module.path:ClassName"` dotted string), defaulting to `finagent.agent.runner:FinAgentRunner`.

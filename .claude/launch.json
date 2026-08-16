@@ -6,6 +6,15 @@
       "runtimeExecutable": "/Users/ethanfreshman/.local/bin/uv",
       "runtimeArgs": ["run", "finagent", "serve"],
       "port": 8000
+    },
+    {
+      "name": "finagent-web-demo",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "FINAGENT_PUBLIC_DEMO=1 FINAGENT_RAG_INDEX_ON_DEMAND=0 exec /Users/ethanfreshman/.local/bin/uv run finagent serve --port 8001"
+      ],
+      "port": 8001
     }
   ]
 }
